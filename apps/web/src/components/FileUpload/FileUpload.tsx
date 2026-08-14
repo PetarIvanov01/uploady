@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { Button } from "../Button";
-import "./file_upload.css";
+import { formatFileSize } from "../../utils/file-size";
 
 type UploadState =
   | { status: "idle" }
@@ -26,13 +26,6 @@ function isUploadResponse(value: unknown): value is UploadResponse {
   );
 }
 
-function formatFileSize(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 export function FileUpload() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploadState, setUploadState] = useState<UploadState>({
@@ -49,6 +42,9 @@ export function FileUpload() {
 
     const formData = new FormData();
     formData.append("name", file.name);
+    formData.append("size", String(file.size));
+    formData.append("type", file.type);
+    formData.append("lastModified", String(file.lastModified));
     formData.append("file", file);
 
     try {
@@ -80,11 +76,21 @@ export function FileUpload() {
   }
 
   const isUploading = uploadState.status === "uploading";
+  const statusTone =
+    uploadState.status === "error"
+      ? "whitespace-normal text-destructive"
+      : uploadState.status === "success"
+        ? "whitespace-nowrap text-ink"
+        : "whitespace-nowrap text-muted";
+  const statusClassName = [
+    "m-0 max-w-[min(80vw,30rem)] overflow-hidden text-ellipsis text-[0.6875rem] leading-normal",
+    statusTone,
+  ].join(" ");
 
   return (
-    <div className="file-upload">
+    <div className="flex min-w-0 flex-col items-start gap-2">
       <input
-        className="file-upload__input"
+        className="sr-only"
         disabled={isUploading}
         onChange={(event) => void uploadSelectedFile(event)}
         ref={inputRef}
@@ -103,7 +109,7 @@ export function FileUpload() {
 
       {uploadState.status !== "idle" && (
         <p
-          className={`file-upload__status file-upload__status--${uploadState.status}`}
+          className={statusClassName}
           id="upload-status"
           role={uploadState.status === "error" ? "alert" : "status"}
         >
