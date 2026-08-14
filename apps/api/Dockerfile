@@ -1,4 +1,4 @@
-FROM node:24.13.1-bookworm-slim AS dependencies
+FROM node:24.13.1-bookworm-slim AS npm-base
 
 WORKDIR /app
 
@@ -7,7 +7,22 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY apps/web/package.json ./apps/web/package.json
 
 RUN npm install --global npm@11.16.0
+
+FROM npm-base AS dependencies
+
 RUN npm ci --workspace @uploady/api --omit=dev --ignore-scripts
+
+FROM npm-base AS migration
+
+RUN npm ci --workspace @uploady/api --include=dev --ignore-scripts
+
+COPY apps/api/drizzle.config.ts ./apps/api/drizzle.config.ts
+COPY apps/api/drizzle ./apps/api/drizzle
+COPY apps/api/src/database ./apps/api/src/database
+
+WORKDIR /app/apps/api
+
+ENTRYPOINT ["npm", "run", "db:migrate"]
 
 FROM oven/bun:1.3.14 AS build
 

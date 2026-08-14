@@ -1,5 +1,6 @@
 **/.turbo
 **/coverage
 **/dist
+**/drizzle
 **/node_modules
 **/routeTree.gen.ts
