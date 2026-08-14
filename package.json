@@ -1,0 +1,39 @@
+{
+  "name": "uplody",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "turbo run build",
+    "check": "npm run lint && npm run check-types",
+    "check-types": "tsc -b",
+    "dev": "turbo run dev",
+    "dev:api": "npm run dev --workspace @uploady/api",
+    "dev:web": "npm run dev --workspace @uploady/web",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "turbo run format",
+    "prepare": "husky",
+    "test": "turbo run test"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "oxlint": "^1.78.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "prettier": "^3.7.4",
+    "turbo": "^2.10.9",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "npm",
+      "version": "11.16.0"
+    }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

@@ -1,0 +1,11 @@
+staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
+
+if [ -n "$staged_files" ]; then
+  printf '%s\n' "$staged_files" | while IFS= read -r file; do
+    npx --no-install prettier --write --ignore-unknown "$file"
+  done
+
+  git update-index --again
+fi
+
+npm run lint
