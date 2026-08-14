@@ -4,7 +4,12 @@ export default defineConfig({
   categories: {
     correctness: "error",
   },
-  ignorePatterns: ["**/dist/**", "**/.next/**", "**/coverage/**"],
+  ignorePatterns: [
+    "**/dist/**",
+    "**/.next/**",
+    "**/coverage/**",
+    "**/routeTree.gen.ts",
+  ],
   options: {
     reportUnusedDisableDirectives: "error",
     typeAware: true,
