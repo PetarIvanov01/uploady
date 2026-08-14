@@ -1,0 +1,37 @@
+name: uploady
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-uploady}:${POSTGRES_PASSWORD:-uploady}@postgres:5432/${POSTGRES_DB:-uploady}
+      NODE_ENV: production
+      PORT: 3000
+    ports:
+      - "${API_PORT:-3000}:3000"
+
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-uploady}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-uploady}
+      POSTGRES_USER: ${POSTGRES_USER:-uploady}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+volumes:
+  postgres_data:
