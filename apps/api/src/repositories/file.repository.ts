@@ -1,9 +1,20 @@
-import { desc, eq } from "drizzle-orm";
-import type { Database } from "../database";
-import { uploadedFiles } from "../database/schema";
+import { database, type Database } from "../database";
 
-export type CreateFileRecord = typeof uploadedFiles.$inferInsert;
-export type FileRecord = typeof uploadedFiles.$inferSelect;
+export interface CreateUploadSessionInput {
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+}
+
+export interface FileRecord {
+  id: string;
+  name: string;
+  size: number;
+  mimeType: string;
+  lastModified: number;
+  createdAt: Date;
+}
 
 interface FileRepositoryDependencies {
   database: Database;
@@ -12,39 +23,26 @@ interface FileRepositoryDependencies {
 export type FileRepository = ReturnType<typeof initFileRepository>;
 
 export function initFileRepository({ database }: FileRepositoryDependencies) {
-  async function create(file: CreateFileRecord): Promise<FileRecord> {
-    const [createdFile] = await database
-      .insert(uploadedFiles)
-      .values(file)
-      .returning();
-
-    if (!createdFile) {
-      throw new Error("Failed to persist uploaded file metadata");
-    }
-
-    return createdFile;
-  }
-
-  async function findById(id: string): Promise<FileRecord | null> {
-    const [file] = await database
-      .select()
-      .from(uploadedFiles)
-      .where(eq(uploadedFiles.id, id))
-      .limit(1);
-
-    return file ?? null;
-  }
-
   async function findAll(): Promise<FileRecord[]> {
-    return database
-      .select()
-      .from(uploadedFiles)
-      .orderBy(desc(uploadedFiles.createdAt));
+    void database;
+    return [];
+  }
+
+  async function findById(_id: string): Promise<FileRecord | null> {
+    return null;
+  }
+
+  async function createSession(
+    _input: CreateUploadSessionInput,
+  ): Promise<FileRecord> {
+    throw new Error("Upload session persistence is not implemented yet");
   }
 
   return {
-    create,
+    createSession,
     findAll,
     findById,
   };
 }
+
+export const fileRepository = initFileRepository({ database });

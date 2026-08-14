@@ -1,13 +1,7 @@
 import { Elysia, t } from "elysia";
-import type { ListFilesHandler } from "../services/list-files";
-import type { RetrieveFileHandler } from "../services/retrieve-file";
-import { bodySchema, type UploadFileHandler } from "../services/upload-file";
-
-interface UploadRoutesDependencies {
-  listFiles: ListFilesHandler;
-  retrieveFile: RetrieveFileHandler;
-  uploadFile: UploadFileHandler;
-}
+import { listFiles } from "../services/list-files";
+import { retrieveFile } from "../services/retrieve-file";
+import { bodySchema, uploadFile } from "../services/upload-file";
 
 const fileMetadataSchema = t.Object({
   id: t.String(),
@@ -18,38 +12,36 @@ const fileMetadataSchema = t.Object({
   createdAt: t.String(),
 });
 
-export const createUploads = ({
-  listFiles,
-  retrieveFile,
-  uploadFile,
-}: UploadRoutesDependencies) =>
-  new Elysia({ prefix: "/uploads" })
-    .post("", async ({ body, status }) => status(201, await uploadFile(body)), {
-      body: bodySchema,
-    })
-    .get("", listFiles, {
+export const uploads = new Elysia({ prefix: "/uploads" })
+  .post("", async ({ body, status }) => status(201, await uploadFile(body)), {
+    body: bodySchema,
+  })
+  .post("/:id/completed", async ({ status }) => {
+    return status(204);
+  })
+  .get("", listFiles, {
+    response: {
+      200: t.Array(fileMetadataSchema),
+    },
+  })
+  .get(
+    "/:id",
+    async ({ params, status }) => {
+      const file = await retrieveFile(params.id);
+
+      if (!file) {
+        return status(404, { message: "File not found" });
+      }
+
+      return file;
+    },
+    {
+      params: t.Object({
+        id: t.String({ format: "uuid" }),
+      }),
       response: {
-        200: t.Array(fileMetadataSchema),
+        200: fileMetadataSchema,
+        404: t.Object({ message: t.String() }),
       },
-    })
-    .get(
-      "/:id",
-      async ({ params, status }) => {
-        const file = await retrieveFile(params.id);
-
-        if (!file) {
-          return status(404, { message: "File not found" });
-        }
-
-        return file;
-      },
-      {
-        params: t.Object({
-          id: t.String({ format: "uuid" }),
-        }),
-        response: {
-          200: fileMetadataSchema,
-          404: t.Object({ message: t.String() }),
-        },
-      },
-    );
+    },
+  );

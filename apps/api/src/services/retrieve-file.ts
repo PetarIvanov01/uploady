@@ -1,6 +1,6 @@
-import type {
-  FileRecord,
-  FileRepository,
+import {
+  fileRepository,
+  type FileRecord,
 } from "../repositories/file.repository";
 
 export interface RetrieveFileResult {
@@ -10,14 +10,6 @@ export interface RetrieveFileResult {
   type: string;
   lastModified: number;
   createdAt: string;
-}
-
-export type RetrieveFileHandler = (
-  id: string,
-) => Promise<RetrieveFileResult | null>;
-
-interface RetrieveFileDependencies {
-  fileRepository: Pick<FileRepository, "findById">;
 }
 
 export function toFileMetadata(file: FileRecord): RetrieveFileResult {
@@ -31,16 +23,14 @@ export function toFileMetadata(file: FileRecord): RetrieveFileResult {
   };
 }
 
-export function initRetrieveFile({
-  fileRepository,
-}: RetrieveFileDependencies): RetrieveFileHandler {
-  return async (id) => {
-    const file = await fileRepository.findById(id);
+export async function retrieveFile(
+  id: string,
+): Promise<RetrieveFileResult | null> {
+  const file = await fileRepository.findById(id);
 
-    if (!file) {
-      return null;
-    }
+  if (!file) {
+    return null;
+  }
 
-    return toFileMetadata(file);
-  };
+  return toFileMetadata(file);
 }
