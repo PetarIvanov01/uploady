@@ -1,4 +1,5 @@
 import { t, type UnwrapSchema } from "elysia";
+import type { FileRepository } from "../repositories/file.repository";
 
 export const bodySchema = t.Object({
   name: t.String(),
@@ -8,22 +9,43 @@ export const bodySchema = t.Object({
   file: t.File(),
 });
 
-type UploadFileInput = UnwrapSchema<typeof bodySchema>;
+export type UploadFileInput = UnwrapSchema<typeof bodySchema>;
 
-export async function uploadFile({
-  name,
-  size,
-  type,
-  lastModified,
-  file,
-}: UploadFileInput) {
-  // tuka bazata shte igrae
+export interface UploadFileResult {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+  receivedSize: number;
+}
 
-  return {
-    name,
-    size,
-    type,
-    lastModified,
-    receivedSize: file.size,
+export type UploadFileHandler = (
+  input: UploadFileInput,
+) => Promise<UploadFileResult>;
+
+interface UploadFileDependencies {
+  fileRepository: Pick<FileRepository, "create">;
+}
+
+export function initUploadFile({
+  fileRepository,
+}: UploadFileDependencies): UploadFileHandler {
+  return async ({ name, size, type, lastModified, file }) => {
+    const uploadedFile = await fileRepository.create({
+      name,
+      size,
+      mimeType: type,
+      lastModified,
+    });
+
+    return {
+      id: uploadedFile.id,
+      name: uploadedFile.name,
+      size: uploadedFile.size,
+      type: uploadedFile.mimeType,
+      lastModified: uploadedFile.lastModified,
+      receivedSize: file.size,
+    };
   };
 }
