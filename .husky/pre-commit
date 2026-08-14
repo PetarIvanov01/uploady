@@ -1,9 +1,6 @@
-staged_files="$(git diff --cached --name-only --diff-filter=ACMR)"
-
-if [ -n "$staged_files" ]; then
-  printf '%s\n' "$staged_files" | while IFS= read -r file; do
-    npx --no-install prettier --write --ignore-unknown "$file"
-  done
+if ! git diff --cached --quiet --diff-filter=ACMR --; then
+  git diff --cached --name-only --diff-filter=ACMR -z \
+    | xargs -0 -r npx --no-install prettier --write --ignore-unknown --
 
   git update-index --again
 fi
