@@ -2,7 +2,11 @@ import { formatFileSize } from "../../utils/file-size";
 import { Button } from "../Button";
 import { useFileUpload } from "./useFileUpload";
 
-export function FileUpload() {
+type FileUploadProps = {
+  onUploadSuccess?: () => void;
+};
+
+export function FileUpload({ onUploadSuccess }: FileUploadProps) {
   const {
     inputRef,
     isUploading,
@@ -11,7 +15,7 @@ export function FileUpload() {
     selectFile,
     uploadSelectedFile,
     uploadState,
-  } = useFileUpload();
+  } = useFileUpload({ onUploadSuccess });
 
   const statusTone =
     uploadState.status === "error"

@@ -7,7 +7,11 @@ export type UploadState =
   | { status: "success"; fileName: string; size: number }
   | { status: "error"; message: string };
 
-export function useFileUpload() {
+type UseFileUploadOptions = {
+  onUploadSuccess?: () => void;
+};
+
+export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadState, setUploadState] = useState<UploadState>({
@@ -57,6 +61,7 @@ export function useFileUpload() {
         fileName: result.name,
         size: result.size,
       });
+      onUploadSuccess?.();
     } catch (error) {
       setUploadState({
         status: "error",

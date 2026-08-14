@@ -1,0 +1,67 @@
+import { useEffect, useState } from "react";
+import { api } from "../../lib/api";
+
+export type FileMetadata = {
+  id: string;
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+  createdAt: string;
+};
+
+type FileListState =
+  | { status: "loading"; files: FileMetadata[] }
+  | { status: "success"; files: FileMetadata[] }
+  | { status: "error"; files: FileMetadata[]; message: string };
+
+export function useFileList(refreshKey = 0) {
+  const [retryCount, setRetryCount] = useState(0);
+  const [state, setState] = useState<FileListState>({
+    status: "loading",
+    files: [],
+  });
+
+  useEffect(() => {
+    let isCurrentRequest = true;
+
+    async function loadFiles() {
+      setState((current) => ({
+        status: "loading",
+        files: current.files,
+      }));
+
+      try {
+        const response = await api.v1.uploads.get();
+
+        if (response.error !== null) {
+          throw new Error(`Could not load files (${response.status}).`);
+        }
+
+        if (isCurrentRequest) {
+          setState({ status: "success", files: response.data });
+        }
+      } catch (error) {
+        if (isCurrentRequest) {
+          setState((current) => ({
+            status: "error",
+            files: current.files,
+            message:
+              error instanceof Error ? error.message : "Could not load files.",
+          }));
+        }
+      }
+    }
+
+    void loadFiles();
+
+    return () => {
+      isCurrentRequest = false;
+    };
+  }, [refreshKey, retryCount]);
+
+  return {
+    ...state,
+    retry: () => setRetryCount((count) => count + 1),
+  };
+}

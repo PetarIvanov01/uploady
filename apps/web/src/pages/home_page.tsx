@@ -1,8 +1,11 @@
+import { useState } from "react";
 import { FileList } from "../components/FileList";
 import { FileUpload } from "../components/FileUpload";
 import { FilterPills } from "../components/FilterPills";
 
 export function HomePage() {
+  const [fileListVersion, setFileListVersion] = useState(0);
+
   return (
     <>
       <section className="hero" aria-labelledby="page-title">
@@ -13,11 +16,13 @@ export function HomePage() {
             access what matters—on your terms.
           </p>
         </div>
-        <FileUpload />
+        <FileUpload
+          onUploadSuccess={() => setFileListVersion((version) => version + 1)}
+        />
       </section>
 
       <FilterPills />
-      <FileList />
+      <FileList refreshKey={fileListVersion} />
     </>
   );
 }
