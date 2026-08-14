@@ -2,20 +2,18 @@ import { Link, Outlet } from "@tanstack/react-router";
 
 export function RootLayout() {
   return (
-    <>
-      <header className="border-b border-slate-200">
-        <nav className="mx-auto flex max-w-5xl gap-6 px-6 py-4">
-          <Link to="/" activeProps={{ className: "font-semibold" }}>
-            Home
+    <div className="app-shell">
+      <header className="site-header">
+        <nav className="site-nav" aria-label="Primary navigation">
+          <Link className="site-nav__brand" to="/">
+            Vault
           </Link>
-          <Link to="/about" activeProps={{ className: "font-semibold" }}>
-            About
-          </Link>
+          <div className="site-nav__links"></div>
         </nav>
       </header>
-      <main className="mx-auto max-w-5xl px-6 py-12">
+      <main id="main-content">
         <Outlet />
       </main>
-    </>
+    </div>
   );
 }

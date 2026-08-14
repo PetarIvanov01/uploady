@@ -11,6 +11,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@elysia/cors": "^1.4.2",
+    "@fontsource/space-mono": "^5.3.0",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-router": "^1.170.28",
     "react": "^19.2.8",
