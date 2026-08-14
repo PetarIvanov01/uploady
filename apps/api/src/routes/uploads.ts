@@ -11,6 +11,9 @@ export const uploads = new Elysia({ prefix: "/uploads" }).post(
   {
     body: t.Object({
       name: t.String(),
+      size: t.Numeric(),
+      type: t.String(),
+      lastModified: t.Numeric(),
       file: t.File(),
     }),
   },

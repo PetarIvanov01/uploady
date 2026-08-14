@@ -14,3 +14,5 @@ export const app = new Elysia({ prefix: "/api/v1" })
   )
   .use(health)
   .use(uploads);
+
+export type App = typeof app;
