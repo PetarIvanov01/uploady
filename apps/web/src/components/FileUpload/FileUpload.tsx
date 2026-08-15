@@ -1,5 +1,6 @@
 import { formatFileSize } from "../../utils/file-size";
 import { Button } from "../Button";
+import { FileTypeIcon, PlusIcon } from "../VaultIcons";
 import { useFileUpload, type UploadState } from "./useFileUpload";
 
 type FileUploadProps = {
@@ -42,7 +43,7 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
     uploadState.status === "verifying";
 
   return (
-    <div className="flex w-full max-w-2xl min-w-0 flex-col items-start gap-3">
+    <div className="w-full min-w-0">
       <input
         aria-label="Choose a file to upload"
         className="sr-only"
@@ -52,115 +53,129 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
         type="file"
       />
 
-      {selectedFile && (
-        <div
-          className="flex w-full min-w-0 items-start justify-between gap-4 border-y border-border py-3"
-          id="selected-file"
-        >
-          <div className="min-w-0">
-            <p
-              className="m-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm text-ink"
-              title={selectedFile.name}
-            >
-              <span className="sr-only">Selected file: </span>
-              {selectedFile.name}
-            </p>
-            <p className="mt-1 mb-0 text-[0.6875rem] text-muted">
-              <span className="sr-only">File details: </span>
-              {formatFileSize(selectedFile.size)} ·{" "}
-              {selectedFile.type || "Unknown type"}
-            </p>
-          </div>
-          {!isWorking && (
-            <button
-              className="min-h-11 shrink-0 cursor-pointer border-0 bg-transparent px-1 text-xs text-muted transition-colors hover:text-ink sm:min-h-0"
-              onClick={openFilePicker}
-              type="button"
-            >
-              Replace
-            </button>
-          )}
-        </div>
-      )}
-
       {!selectedFile && (
-        <Button onClick={openFilePicker} variant="primary">
-          Choose file
-        </Button>
+        <button
+          className="flex min-h-[3.875rem] w-full cursor-pointer items-center justify-center gap-2.5 rounded-[3px] border border-accent bg-transparent px-4 text-[0.875rem] text-accent transition-colors hover:bg-accent/[0.04] sm:text-[0.9375rem]"
+          onClick={openFilePicker}
+          type="button"
+        >
+          <PlusIcon className="size-5 shrink-0" />
+          <span>Upload file</span>
+        </button>
       )}
 
-      {selectedFile && !isWorking && uploadState.status !== "success" && (
-        <Button
-          aria-describedby="selected-file"
-          onClick={() => void uploadSelectedFile()}
-          variant="primary"
-        >
-          {uploadState.status === "error" ? "Retry upload" : "Upload"}
-        </Button>
-      )}
+      {selectedFile && (
+        <div className="rounded-[3px] border border-dashed border-[#8d99a8] px-3.5 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <FileTypeIcon
+              className="size-6 shrink-0 text-ink"
+              fileName={selectedFile.name}
+              type={selectedFile.type}
+            />
+            <div className="min-w-0 flex-1">
+              <p
+                className="m-0 truncate text-[0.8125rem] leading-5 text-ink sm:text-sm"
+                title={selectedFile.name}
+              >
+                <span className="sr-only">Selected file: </span>
+                {selectedFile.name}
+              </p>
+              <p className="mt-0.5 mb-0 truncate text-[0.6875rem] leading-5 text-muted sm:text-xs">
+                <span className="sr-only">File details: </span>
+                {formatFileSize(selectedFile.size)} ·{" "}
+                {selectedFile.type || "Unknown type"}
+              </p>
+            </div>
 
-      {showProgress && (
-        <div
-          aria-live="polite"
-          className="w-full"
-          id="upload-status"
-          role="status"
-        >
-          <div className="mb-2 flex items-baseline justify-between gap-4 text-[0.6875rem]">
-            <span className="text-ink">
-              {uploadState.status === "uploading" ? "Uploading" : phase?.label}
-            </span>
-            {uploadState.status === "uploading" && (
-              <span className="text-muted">
-                {Math.round(uploadState.progress)}%
-              </span>
+            {!isWorking && uploadState.status !== "success" && (
+              <button
+                className="min-h-11 shrink-0 cursor-pointer border-0 bg-transparent px-1 text-xs text-muted transition-colors hover:text-ink"
+                onClick={openFilePicker}
+                type="button"
+              >
+                Replace
+              </button>
             )}
           </div>
-          <div
-            aria-hidden="true"
-            className="h-px w-full overflow-hidden bg-border"
-          >
+
+          {showProgress && (
             <div
-              className={`h-full bg-ink transition-[width] duration-150 ${
-                uploadState.status === "uploading" ? "" : "w-1/3 animate-pulse"
-              }`}
-              style={
-                uploadState.status === "uploading"
-                  ? { width: `${uploadState.progress}%` }
-                  : undefined
-              }
-            />
-          </div>
-          <p className="mt-2 mb-0 text-[0.6875rem] text-muted">
-            {uploadState.status === "uploading"
-              ? `${formatFileSize(uploadState.loaded)} of ${formatFileSize(uploadState.total)}`
-              : phase?.detail}
-          </p>
-        </div>
-      )}
+              aria-live="polite"
+              className="mt-3 border-t border-border pt-3"
+              role="status"
+            >
+              <div className="mb-2 flex items-baseline justify-between gap-4 text-[0.6875rem]">
+                <span className="text-ink">
+                  {uploadState.status === "uploading"
+                    ? "Uploading"
+                    : phase?.label}
+                </span>
+                {uploadState.status === "uploading" && (
+                  <span className="text-muted tabular-nums">
+                    {Math.round(uploadState.progress)}%
+                  </span>
+                )}
+              </div>
+              <div
+                aria-hidden="true"
+                className="h-px w-full overflow-hidden bg-border"
+              >
+                <div
+                  className={`h-full bg-ink transition-[width] duration-150 ${
+                    uploadState.status === "uploading"
+                      ? ""
+                      : "w-1/3 animate-pulse"
+                  }`}
+                  style={
+                    uploadState.status === "uploading"
+                      ? { width: `${uploadState.progress}%` }
+                      : undefined
+                  }
+                />
+              </div>
+              <p className="mt-2 mb-0 text-[0.6875rem] text-muted">
+                {uploadState.status === "uploading"
+                  ? `${formatFileSize(uploadState.loaded)} of ${formatFileSize(uploadState.total)}`
+                  : phase?.detail}
+              </p>
+            </div>
+          )}
 
-      {uploadState.status === "success" && (
-        <div
-          className="flex flex-wrap items-center gap-x-4 gap-y-2"
-          role="status"
-        >
-          <p className="m-0 text-xs text-ink">
-            Uploaded {uploadState.fileName} · {formatFileSize(uploadState.size)}
-          </p>
-          <button
-            className="min-h-11 cursor-pointer border-0 bg-transparent p-0 text-xs text-accent hover:text-accent-hover sm:min-h-0"
-            onClick={openFilePicker}
-            type="button"
-          >
-            Upload another
-          </button>
-        </div>
-      )}
+          {uploadState.status === "success" && (
+            <div
+              className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3"
+              role="status"
+            >
+              <p className="m-0 text-xs text-ink">Upload complete</p>
+              <button
+                className="min-h-11 cursor-pointer border-0 bg-transparent p-0 text-xs text-accent hover:text-accent-hover"
+                onClick={openFilePicker}
+                type="button"
+              >
+                Upload another
+              </button>
+            </div>
+          )}
 
-      {uploadState.status === "error" && (
-        <p className="m-0 max-w-xl text-xs text-destructive" role="alert">
-          {uploadState.message}
-        </p>
+          {uploadState.status === "error" && (
+            <p
+              className="mt-3 mb-0 border-t border-border pt-3 text-xs text-destructive"
+              role="alert"
+            >
+              {uploadState.message}
+            </p>
+          )}
+
+          {!isWorking && uploadState.status !== "success" && (
+            <Button
+              className="mt-3 w-full"
+              onClick={() => void uploadSelectedFile()}
+              variant="primary"
+            >
+              {uploadState.status === "error" ? "Retry upload" : "Upload"}
+            </Button>
+          )}
+        </div>
       )}
     </div>
   );

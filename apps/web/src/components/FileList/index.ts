@@ -1,2 +1,3 @@
 export { FileList, FileRow } from "./FileList";
-export { useFileList, type FileMetadata } from "./useFileList";
+export { FileSearch } from "./FileSearch";
+export { isFolder, useFileList, type FileMetadata } from "./useFileList";
