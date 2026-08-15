@@ -47,11 +47,29 @@ export const users = pgTable("users", {
     .notNull(),
 });
 
+export const folders = pgTable("folders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
+  parentFolderId: uuid("parent_folder_id").references(
+    (): AnyPgColumn => folders.id,
+  ),
+  name: varchar("name", { length: 255 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const files = pgTable("files", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id),
+  parentFolderId: uuid("parent_folder_id").references(() => folders.id),
   name: varchar("name", { length: 255 }).notNull(),
   currentVersionId: uuid("current_version_id").references(
     (): AnyPgColumn => fileVersions.id,

@@ -1,4 +1,5 @@
 import { and, eq, ne } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { database, type Database } from "../database";
 import { files, fileVersions, uploadSessions } from "../database/schema";
 
@@ -91,7 +92,7 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
   async function createSingleUploadSession(
     input: CreateSingleUploadSessionInput,
   ): Promise<CreatedSingleUploadSession> {
-    const objectKey = `users/${input.userId}/${crypto.randomUUID()}`;
+    const objectKey = `users/${input.userId}/${randomUUID()}`;
 
     return database.transaction(async (tx) => {
       const [file] = await tx
