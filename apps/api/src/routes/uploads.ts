@@ -36,7 +36,7 @@ const fileMetadataSchema = t.Object({
   type: t.String(),
 });
 
-const messageSchema = t.Object({ message: t.String() });
+const errorMessageSchema = t.Object({ message: t.String() });
 const uploadIdParamsSchema = t.Object({
   uploadSessionId: t.String({ format: "uuid" }),
 });
@@ -114,8 +114,8 @@ export const uploads = new Elysia({ prefix: "/uploads" })
           status: t.Literal("COMPLETED"),
           uploadSessionId: t.String({ format: "uuid" }),
         }),
-        404: messageSchema,
-        409: messageSchema,
+        404: errorMessageSchema,
+        409: errorMessageSchema,
       },
     },
   )
@@ -141,7 +141,7 @@ export const uploads = new Elysia({ prefix: "/uploads" })
           partSizeBytes: t.Integer(),
           uploadSessionId: t.String({ format: "uuid" }),
         }),
-        501: messageSchema,
+        501: errorMessageSchema,
       },
     },
   )
@@ -165,7 +165,7 @@ export const uploads = new Elysia({ prefix: "/uploads" })
           partNumber: t.Integer(),
           uploadUrl: t.String(),
         }),
-        501: messageSchema,
+        501: errorMessageSchema,
       },
     },
   )
@@ -189,7 +189,7 @@ export const uploads = new Elysia({ prefix: "/uploads" })
           status: t.Literal("COMPLETED"),
           uploadSessionId: t.String({ format: "uuid" }),
         }),
-        501: messageSchema,
+        501: errorMessageSchema,
       },
     },
   )
@@ -207,7 +207,7 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     },
     {
       params: uploadIdParamsSchema,
-      response: { 204: t.Void(), 501: messageSchema },
+      response: { 204: t.Void(), 501: errorMessageSchema },
     },
   )
   .get("", listFiles, {
@@ -226,6 +226,6 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     },
     {
       params: t.Object({ id: t.String({ format: "uuid" }) }),
-      response: { 200: fileMetadataSchema, 404: messageSchema },
+      response: { 200: fileMetadataSchema, 404: errorMessageSchema },
     },
   );

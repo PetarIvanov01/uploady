@@ -1,4 +1,8 @@
 import { describe, expect, it, mock } from "bun:test";
+import type {
+  CreateFolderInput,
+  UpdateFolderInput,
+} from "../src/repositories/folder.repository";
 import type { CreateSingleUploadSessionInput } from "../src/repositories/file.repository";
 
 const singleUploadLimitBytes = 200 * 1024 * 1024;
@@ -9,6 +13,25 @@ const fileVersionId = "68827f7a-b376-4905-a898-3cd5d45a2978";
 const createdAt = "2026-08-14T18:00:00.000Z";
 const expiresAt = new Date("2026-08-14T18:05:00.000Z");
 const objectKey = `users/test/${fileId}`;
+const folderId = "a528cd92-3d83-4e05-ab7b-777341322916";
+const childFolderId = "30e8a81f-0ee7-4eb8-8e78-e296cfbe674a";
+const createdFolderId = "e60f0291-6c88-4e27-bbab-78ad98487df5";
+
+const folderRecord = {
+  createdAt: new Date(createdAt),
+  id: folderId,
+  name: "Projects",
+  parentFolderId: null,
+  updatedAt: new Date(createdAt),
+  userId: "9e9a548c-dced-4f30-958d-19d423b53028",
+};
+
+const childFolderRecord = {
+  ...folderRecord,
+  id: childFolderId,
+  name: "System Design",
+  parentFolderId: folderId,
+};
 
 const fileRecord = {
   createdAt: new Date(createdAt),
@@ -61,6 +84,28 @@ await mock.module("../src/repositories/file.repository", () => ({
       requestedFileId === fileId && requestedSessionId === uploadSessionId
         ? singleUploadSession
         : null,
+  },
+}));
+
+await mock.module("../src/repositories/folder.repository", () => ({
+  folderRepository: {
+    create: async (input: CreateFolderInput) => ({
+      ...folderRecord,
+      ...input,
+      id: createdFolderId,
+    }),
+    findAll: async (_userId: string, parentFolderId: string | null) =>
+      parentFolderId === null ? [folderRecord] : [childFolderRecord],
+    findById: async (id: string) => {
+      if (id === folderId) return folderRecord;
+      if (id === childFolderId) return childFolderRecord;
+      return null;
+    },
+    remove: async (id: string) => (id === folderId ? "NOT_EMPTY" : "DELETED"),
+    update: async (id: string, _userId: string, input: UpdateFolderInput) => ({
+      ...(id === childFolderId ? childFolderRecord : folderRecord),
+      ...input,
+    }),
   },
 }));
 
@@ -203,5 +248,102 @@ describe("API", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ message: "File not found" });
+  });
+
+  it("lists folders in the vault root", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/folders"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual([
+      {
+        createdAt,
+        id: folderId,
+        name: "Projects",
+        parentFolderId: null,
+        updatedAt: createdAt,
+      },
+    ]);
+  });
+
+  it("creates a nested folder", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/folders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: "Architecture",
+          parentFolderId: folderId,
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({
+      createdAt,
+      id: createdFolderId,
+      name: "Architecture",
+      parentFolderId: folderId,
+      updatedAt: createdAt,
+    });
+  });
+
+  it("moves a folder to the vault root", async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/api/v1/folders/${childFolderId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parentFolderId: null }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      createdAt,
+      id: childFolderId,
+      name: "System Design",
+      parentFolderId: null,
+      updatedAt: createdAt,
+    });
+  });
+
+  it("rejects moving a folder inside itself", async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/api/v1/folders/${folderId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ parentFolderId: folderId }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      message: "Folder move would create a cycle",
+    });
+  });
+
+  it("rejects deleting a non-empty folder", async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/api/v1/folders/${folderId}`, {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      message: "Folder must be empty before deletion",
+    });
+  });
+
+  it("deletes an empty folder", async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/api/v1/folders/${childFolderId}`, {
+        method: "DELETE",
+      }),
+    );
+
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
   });
 });
