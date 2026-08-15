@@ -1,35 +1,66 @@
 import { describe, expect, it, mock } from "bun:test";
-import type { CreateUploadSessionInput } from "../src/repositories/file.repository";
+import type { CreateSingleUploadSessionInput } from "../src/repositories/file.repository";
+
+const singleUploadLimitBytes = 200 * 1024 * 1024;
 
 const fileId = "f0a6d1d4-1ef7-48df-9d8f-e13b2aa68bc1";
+const uploadSessionId = "9462f628-276c-42cc-9a0d-1aa794ad7f06";
+const fileVersionId = "68827f7a-b376-4905-a898-3cd5d45a2978";
 const createdAt = "2026-08-14T18:00:00.000Z";
+const expiresAt = new Date("2026-08-14T18:05:00.000Z");
+const objectKey = `users/test/${fileId}`;
 
 const fileRecord = {
+  createdAt: new Date(createdAt),
   id: fileId,
+  mimeType: "text/plain",
   name: "vault-note.txt",
   size: 12,
-  mimeType: "text/plain",
-  lastModified: 1786640400000,
-  createdAt: new Date(createdAt),
+  status: "READY" as const,
 };
+
+const singleUploadSession = {
+  contentType: "text/plain",
+  expiresAt: new Date(Date.now() + 60_000),
+  fileId,
+  fileVersionId,
+  objectKey,
+  status: "UPLOADING" as const,
+  totalSizeBytes: 12,
+  uploadSessionId,
+};
+
+await mock.module("../src/s3", () => ({
+  PRESIGNED_UPLOAD_EXPIRES_IN_SECONDS: 300,
+  getObjectMetadata: async () => ({
+    contentType: "text/plain",
+    etag: '"test-etag"',
+    size: 12,
+  }),
+  putUrl: async () => "https://storage.example/upload",
+}));
 
 await mock.module("../src/repositories/file.repository", () => ({
   fileRepository: {
-    createSession: async ({
-      name,
-      size,
-      type,
-      lastModified,
-    }: CreateUploadSessionInput) => ({
-      id: fileId,
-      name,
-      size,
-      mimeType: type,
-      lastModified,
-      createdAt: new Date(createdAt),
+    completeSingleUploadSession: async () => true,
+    createSingleUploadSession: async (
+      _input: CreateSingleUploadSessionInput,
+    ) => ({
+      expiresAt,
+      fileId,
+      objectKey,
+      uploadSessionId,
     }),
+    failSingleUploadSession: async () => undefined,
     findAll: async () => [fileRecord],
     findById: async (id: string) => (id === fileId ? fileRecord : null),
+    findSingleUploadSession: async (
+      requestedFileId: string,
+      requestedSessionId: string,
+    ) =>
+      requestedFileId === fileId && requestedSessionId === uploadSessionId
+        ? singleUploadSession
+        : null,
   },
 }));
 
@@ -45,30 +76,87 @@ describe("API", () => {
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
-  it("accepts file metadata for an upload", async () => {
+  it("creates a presigned single-upload session", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/v1/uploads", {
+      new Request("http://localhost/api/v1/uploads/single", {
         method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
+          checksum: "sha256:test",
           name: "vault-note.txt",
           size: 12,
           type: "text/plain",
-          lastModified: 1786640400000,
         }),
       }),
     );
 
     expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
-      id: fileId,
-      name: "vault-note.txt",
-      size: 12,
-      type: "text/plain",
-      lastModified: 1786640400000,
-      receivedSize: 12,
+      expiresAt: expiresAt.toISOString(),
+      fileId,
+      headers: { "content-type": "text/plain" },
+      method: "PUT",
+      mode: "SINGLE",
+      uploadSessionId,
+      uploadUrl: "https://storage.example/upload",
+    });
+  });
+
+  it("rejects a file larger than 200 MiB from the single-upload path", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/uploads/single", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          checksum: "sha256:test",
+          name: "large.bin",
+          size: singleUploadLimitBytes + 1,
+          type: "application/octet-stream",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({
+      maxSizeBytes: singleUploadLimitBytes,
+      message: `Single uploads cannot exceed ${singleUploadLimitBytes} bytes`,
+    });
+  });
+
+  it("completes a single upload after storage verification", async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/api/v1/uploads/single/${fileId}/complete`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ uploadSessionId }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      fileId,
+      status: "COMPLETED",
+      uploadSessionId,
+    });
+  });
+
+  it("exposes the multipart initiation contract as not implemented", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/uploads/multipart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          checksum: "sha256:test",
+          name: "large.bin",
+          size: singleUploadLimitBytes + 1,
+          type: "application/octet-stream",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(501);
+    expect(await response.json()).toEqual({
+      message: "Multipart uploads are not implemented yet",
     });
   });
 
@@ -79,12 +167,12 @@ describe("API", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
+      createdAt,
       id: fileId,
       name: "vault-note.txt",
       size: 12,
+      status: "READY",
       type: "text/plain",
-      lastModified: 1786640400000,
-      createdAt,
     });
   });
 
@@ -96,12 +184,12 @@ describe("API", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([
       {
+        createdAt,
         id: fileId,
         name: "vault-note.txt",
         size: 12,
+        status: "READY",
         type: "text/plain",
-        lastModified: 1786640400000,
-        createdAt,
       },
     ]);
   });

@@ -4,22 +4,22 @@ import {
 } from "../repositories/file.repository";
 
 export interface RetrieveFileResult {
+  createdAt: string;
   id: string;
   name: string;
   size: number;
+  status: FileRecord["status"];
   type: string;
-  lastModified: number;
-  createdAt: string;
 }
 
 export function toFileMetadata(file: FileRecord): RetrieveFileResult {
   return {
+    createdAt: file.createdAt.toISOString(),
     id: file.id,
     name: file.name,
     size: file.size,
+    status: file.status,
     type: file.mimeType,
-    lastModified: file.lastModified,
-    createdAt: file.createdAt.toISOString(),
   };
 }
 

@@ -8,6 +8,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    env_file:
+      - ./apps/api/.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-uploady}:${POSTGRES_PASSWORD:-uploady}@postgres:5432/${POSTGRES_DB:-uploady}
       NODE_ENV: production

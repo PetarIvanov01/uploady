@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 
 export type FileMetadata = {
+  createdAt: string;
   id: string;
   name: string;
   size: number;
+  status: "UPLOADING" | "READY" | "FAILED" | "DELETED";
   type: string;
-  lastModified: number;
-  createdAt: string;
 };
 
 type FileListState =

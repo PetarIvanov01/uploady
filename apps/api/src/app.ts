@@ -2,6 +2,7 @@ import { Elysia } from "elysia";
 import { cors } from "@elysia/cors";
 import { health } from "./routes/health";
 import { uploads } from "./routes/uploads";
+import "./s3";
 
 const frontendOrigin =
   process.env.NODE_ENV === "production" ? "" : "http://localhost:5173";

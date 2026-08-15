@@ -1,6 +1,20 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { api } from "../../lib/api";
 
+const singleUploadLimitBytes = 200 * 1024 * 1024;
+
+async function calculateChecksum(file: File) {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    await file.arrayBuffer(),
+  );
+  const hexadecimal = Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+
+  return `sha256:${hexadecimal}`;
+}
+
 export type UploadState =
   | { status: "idle" }
   | { status: "uploading" }
@@ -39,27 +53,58 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
 
     setUploadState({ status: "uploading" });
 
-    const payload = {
-      file: selectedFile,
-      lastModified: selectedFile.lastModified,
-      size: selectedFile.size,
-      name: selectedFile.name,
-      type: selectedFile.type,
-    };
-
     try {
-      const response = await api.v1.uploads.post(payload);
+      const contentType = selectedFile.type || "application/octet-stream";
+      const payload = {
+        checksum: await calculateChecksum(selectedFile),
+        name: selectedFile.name,
+        size: selectedFile.size,
+        type: contentType,
+      };
 
-      if (response.error !== null) {
-        throw new Error(`Upload failed with status ${response.status}.`);
+      if (selectedFile.size > singleUploadLimitBytes) {
+        const multipartResponse = await api.v1.uploads.multipart.post(payload);
+
+        if (multipartResponse.error !== null) {
+          throw new Error("Multipart uploads are not available yet.");
+        }
+
+        throw new Error("Multipart upload initialization is incomplete.");
       }
 
-      const result = response.data;
+      const response = await api.v1.uploads.single.post(payload);
+
+      if (response.error !== null) {
+        throw new Error(
+          `Could not initialize the upload (${response.status}).`,
+        );
+      }
+
+      const session = response.data;
+      const uploadResponse = await fetch(session.uploadUrl, {
+        method: session.method,
+        headers: session.headers,
+        body: selectedFile,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Storage upload failed (${uploadResponse.status}).`);
+      }
+
+      const completionResponse = await api.v1.uploads
+        .single({ fileId: session.fileId })
+        .complete.post({ uploadSessionId: session.uploadSessionId });
+
+      if (completionResponse.error !== null) {
+        throw new Error(
+          `Could not complete the upload (${completionResponse.status}).`,
+        );
+      }
 
       setUploadState({
         status: "success",
-        fileName: result.name,
-        size: result.size,
+        fileName: selectedFile.name,
+        size: selectedFile.size,
       });
       onUploadSuccess?.();
     } catch (error) {

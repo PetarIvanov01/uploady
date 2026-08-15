@@ -1,19 +1,41 @@
+import { and, eq, ne } from "drizzle-orm";
 import { database, type Database } from "../database";
+import { files, fileVersions, uploadSessions } from "../database/schema";
 
-export interface CreateUploadSessionInput {
+export interface CreateSingleUploadSessionInput {
+  checksum: string;
+  expiresAt: Date;
   name: string;
   size: number;
   type: string;
-  lastModified: number;
+  userId: string;
 }
 
 export interface FileRecord {
+  createdAt: Date;
   id: string;
+  mimeType: string;
   name: string;
   size: number;
-  mimeType: string;
-  lastModified: number;
-  createdAt: Date;
+  status: (typeof files.$inferSelect)["status"];
+}
+
+export interface CreatedSingleUploadSession {
+  expiresAt: Date;
+  fileId: string;
+  objectKey: string;
+  uploadSessionId: string;
+}
+
+export interface SingleUploadSessionRecord {
+  contentType: string;
+  expiresAt: Date;
+  fileId: string;
+  fileVersionId: string;
+  objectKey: string;
+  status: (typeof uploadSessions.$inferSelect)["status"];
+  totalSizeBytes: number;
+  uploadSessionId: string;
 }
 
 interface FileRepositoryDependencies {
@@ -24,24 +46,209 @@ export type FileRepository = ReturnType<typeof initFileRepository>;
 
 export function initFileRepository({ database }: FileRepositoryDependencies) {
   async function findAll(): Promise<FileRecord[]> {
-    void database;
-    return [];
+    const records = await database
+      .select({
+        createdAt: files.createdAt,
+        id: files.id,
+        mimeType: fileVersions.contentType,
+        name: files.name,
+        size: fileVersions.sizeBytes,
+        status: files.status,
+      })
+      .from(files)
+      .innerJoin(fileVersions, eq(files.currentVersionId, fileVersions.id))
+      .where(ne(files.status, "DELETED"));
+
+    return records.map((record) => ({
+      ...record,
+      mimeType: record.mimeType ?? "application/octet-stream",
+    }));
   }
 
-  async function findById(_id: string): Promise<FileRecord | null> {
-    return null;
+  async function findById(id: string): Promise<FileRecord | null> {
+    const [record] = await database
+      .select({
+        createdAt: files.createdAt,
+        id: files.id,
+        mimeType: fileVersions.contentType,
+        name: files.name,
+        size: fileVersions.sizeBytes,
+        status: files.status,
+      })
+      .from(files)
+      .innerJoin(fileVersions, eq(files.currentVersionId, fileVersions.id))
+      .where(and(eq(files.id, id), ne(files.status, "DELETED")))
+      .limit(1);
+
+    return record
+      ? {
+          ...record,
+          mimeType: record.mimeType ?? "application/octet-stream",
+        }
+      : null;
   }
 
-  async function createSession(
-    _input: CreateUploadSessionInput,
-  ): Promise<FileRecord> {
-    throw new Error("Upload session persistence is not implemented yet");
+  async function createSingleUploadSession(
+    input: CreateSingleUploadSessionInput,
+  ): Promise<CreatedSingleUploadSession> {
+    const objectKey = `users/${input.userId}/${crypto.randomUUID()}`;
+
+    return database.transaction(async (tx) => {
+      const [file] = await tx
+        .insert(files)
+        .values({
+          userId: input.userId,
+          name: input.name,
+          status: "UPLOADING",
+        })
+        .returning({ id: files.id });
+
+      const [fileVersion] = await tx
+        .insert(fileVersions)
+        .values({
+          checksum: input.checksum,
+          contentType: input.type,
+          fileId: file.id,
+          objectKey,
+          sizeBytes: input.size,
+          status: "PENDING",
+          version: 1,
+        })
+        .returning({ id: fileVersions.id });
+
+      const [uploadSession] = await tx
+        .insert(uploadSessions)
+        .values({
+          expectedParts: 1,
+          expiresAt: input.expiresAt,
+          fileId: file.id,
+          fileVersionId: fileVersion.id,
+          mode: "SINGLE",
+          objectKey,
+          partSizeBytes: input.size,
+          status: "UPLOADING",
+          totalSizeBytes: input.size,
+        })
+        .returning({
+          expiresAt: uploadSessions.expiresAt,
+          id: uploadSessions.id,
+        });
+
+      return {
+        expiresAt: uploadSession.expiresAt,
+        fileId: file.id,
+        objectKey,
+        uploadSessionId: uploadSession.id,
+      };
+    });
+  }
+
+  async function findSingleUploadSession(
+    fileId: string,
+    uploadSessionId: string,
+  ): Promise<SingleUploadSessionRecord | null> {
+    const [record] = await database
+      .select({
+        contentType: fileVersions.contentType,
+        expiresAt: uploadSessions.expiresAt,
+        fileId: uploadSessions.fileId,
+        fileVersionId: uploadSessions.fileVersionId,
+        objectKey: uploadSessions.objectKey,
+        status: uploadSessions.status,
+        totalSizeBytes: uploadSessions.totalSizeBytes,
+        uploadSessionId: uploadSessions.id,
+      })
+      .from(uploadSessions)
+      .innerJoin(
+        fileVersions,
+        eq(uploadSessions.fileVersionId, fileVersions.id),
+      )
+      .where(
+        and(
+          eq(uploadSessions.id, uploadSessionId),
+          eq(uploadSessions.fileId, fileId),
+          eq(uploadSessions.mode, "SINGLE"),
+        ),
+      )
+      .limit(1);
+
+    return record
+      ? {
+          ...record,
+          contentType: record.contentType ?? "application/octet-stream",
+        }
+      : null;
+  }
+
+  async function completeSingleUploadSession(
+    session: SingleUploadSessionRecord,
+  ): Promise<boolean> {
+    return database.transaction(async (tx) => {
+      const [claimedSession] = await tx
+        .update(uploadSessions)
+        .set({ status: "COMPLETING" })
+        .where(
+          and(
+            eq(uploadSessions.id, session.uploadSessionId),
+            eq(uploadSessions.fileId, session.fileId),
+            eq(uploadSessions.mode, "SINGLE"),
+          ),
+        )
+        .returning({ id: uploadSessions.id });
+
+      if (!claimedSession) {
+        return false;
+      }
+
+      await tx
+        .update(fileVersions)
+        .set({ status: "READY" })
+        .where(eq(fileVersions.id, session.fileVersionId));
+
+      await tx
+        .update(files)
+        .set({
+          currentVersionId: session.fileVersionId,
+          status: "READY",
+          updatedAt: new Date(),
+        })
+        .where(eq(files.id, session.fileId));
+
+      await tx
+        .update(uploadSessions)
+        .set({ completedAt: new Date(), status: "COMPLETED" })
+        .where(eq(uploadSessions.id, session.uploadSessionId));
+
+      return true;
+    });
+  }
+
+  async function failSingleUploadSession(
+    session: SingleUploadSessionRecord,
+  ): Promise<void> {
+    await database.transaction(async (tx) => {
+      await tx
+        .update(uploadSessions)
+        .set({ status: "FAILED" })
+        .where(eq(uploadSessions.id, session.uploadSessionId));
+      await tx
+        .update(fileVersions)
+        .set({ status: "FAILED" })
+        .where(eq(fileVersions.id, session.fileVersionId));
+      await tx
+        .update(files)
+        .set({ status: "FAILED", updatedAt: new Date() })
+        .where(eq(files.id, session.fileId));
+    });
   }
 
   return {
-    createSession,
+    completeSingleUploadSession,
+    createSingleUploadSession,
+    failSingleUploadSession,
     findAll,
     findById,
+    findSingleUploadSession,
   };
 }
 
