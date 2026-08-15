@@ -2,6 +2,7 @@ import { useRef, useState, type ChangeEvent } from "react";
 import { api } from "../../lib/api";
 
 const singleUploadLimitBytes = 200 * 1024 * 1024;
+const minimumPhaseDurationMs = 350;
 
 async function calculateChecksum(file: File) {
   const digest = await crypto.subtle.digest(
@@ -15,9 +16,74 @@ async function calculateChecksum(file: File) {
   return `sha256:${hexadecimal}`;
 }
 
+async function waitForMinimumDuration(startedAt: number) {
+  const remaining = minimumPhaseDurationMs - (performance.now() - startedAt);
+
+  if (remaining > 0) {
+    await new Promise((resolve) => window.setTimeout(resolve, remaining));
+  }
+}
+
+type StorageUploadOptions = {
+  file: File;
+  headers: Record<string, string>;
+  method: string;
+  onProgress: (loaded: number, total: number) => void;
+  url: string;
+};
+
+function uploadToStorage({
+  file,
+  headers,
+  method,
+  onProgress,
+  url,
+}: StorageUploadOptions) {
+  return new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
+
+    request.open(method, url);
+    Object.entries(headers).forEach(([name, value]) => {
+      request.setRequestHeader(name, value);
+    });
+
+    request.upload.addEventListener("progress", (event) => {
+      onProgress(
+        event.loaded,
+        event.lengthComputable ? event.total : file.size,
+      );
+    });
+    request.addEventListener("load", () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress(file.size, file.size);
+        resolve();
+        return;
+      }
+
+      reject(new Error(`Storage upload failed (${request.status}).`));
+    });
+    request.addEventListener("error", () => {
+      reject(new Error("The storage upload could not be reached."));
+    });
+    request.addEventListener("timeout", () => {
+      reject(new Error("The storage upload timed out."));
+    });
+    request.send(file);
+  });
+}
+
 export type UploadState =
   | { status: "idle" }
-  | { status: "uploading" }
+  | { status: "preparing" }
+  | { status: "initializing" }
+  | {
+      status: "uploading";
+      expiresAt: string;
+      loaded: number;
+      progress: number;
+      total: number;
+    }
+  | { status: "verifying" }
   | { status: "success"; fileName: string; size: number }
   | { status: "error"; message: string };
 
@@ -51,27 +117,38 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
   async function uploadSelectedFile() {
     if (!selectedFile || uploadState.status === "uploading") return;
 
-    setUploadState({ status: "uploading" });
+    if (selectedFile.size === 0) {
+      setUploadState({
+        status: "error",
+        message: "Empty files cannot be uploaded.",
+      });
+      return;
+    }
+
+    if (selectedFile.size > singleUploadLimitBytes) {
+      setUploadState({
+        status: "error",
+        message: "Files over 200 MB are not supported yet.",
+      });
+      return;
+    }
 
     try {
+      const preparingStartedAt = performance.now();
+      setUploadState({ status: "preparing" });
+      const checksum = await calculateChecksum(selectedFile);
+      await waitForMinimumDuration(preparingStartedAt);
+
       const contentType = selectedFile.type || "application/octet-stream";
       const payload = {
-        checksum: await calculateChecksum(selectedFile),
+        checksum,
         name: selectedFile.name,
         size: selectedFile.size,
         type: contentType,
       };
 
-      if (selectedFile.size > singleUploadLimitBytes) {
-        const multipartResponse = await api.v1.uploads.multipart.post(payload);
-
-        if (multipartResponse.error !== null) {
-          throw new Error("Multipart uploads are not available yet.");
-        }
-
-        throw new Error("Multipart upload initialization is incomplete.");
-      }
-
+      const initializingStartedAt = performance.now();
+      setUploadState({ status: "initializing" });
       const response = await api.v1.uploads.single.post(payload);
 
       if (response.error !== null) {
@@ -81,26 +158,45 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
       }
 
       const session = response.data;
-      const uploadResponse = await fetch(session.uploadUrl, {
-        method: session.method,
-        headers: session.headers,
-        body: selectedFile,
+      await waitForMinimumDuration(initializingStartedAt);
+
+      const uploadingStartedAt = performance.now();
+      setUploadState({
+        status: "uploading",
+        expiresAt: session.expiresAt,
+        loaded: 0,
+        progress: 0,
+        total: selectedFile.size,
       });
+      await uploadToStorage({
+        file: selectedFile,
+        headers: session.headers,
+        method: session.method,
+        onProgress: (loaded, total) => {
+          setUploadState({
+            status: "uploading",
+            expiresAt: session.expiresAt,
+            loaded,
+            progress: total > 0 ? Math.min(100, (loaded / total) * 100) : 0,
+            total,
+          });
+        },
+        url: session.uploadUrl,
+      });
+      await waitForMinimumDuration(uploadingStartedAt);
 
-      if (!uploadResponse.ok) {
-        throw new Error(`Storage upload failed (${uploadResponse.status}).`);
-      }
-
+      const verifyingStartedAt = performance.now();
+      setUploadState({ status: "verifying" });
       const completionResponse = await api.v1.uploads
         .single({ fileId: session.fileId })
         .complete.post({ uploadSessionId: session.uploadSessionId });
 
       if (completionResponse.error !== null) {
-        throw new Error(
-          `Could not complete the upload (${completionResponse.status}).`,
-        );
+        const message = completionResponse.error.value.message;
+        throw new Error(message || "The upload could not be verified.");
       }
 
+      await waitForMinimumDuration(verifyingStartedAt);
       setUploadState({
         status: "success",
         fileName: selectedFile.name,
@@ -115,9 +211,15 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
     }
   }
 
+  const isWorking =
+    uploadState.status === "preparing" ||
+    uploadState.status === "initializing" ||
+    uploadState.status === "uploading" ||
+    uploadState.status === "verifying";
+
   return {
     inputRef,
-    isUploading: uploadState.status === "uploading",
+    isWorking,
     openFilePicker,
     selectedFile,
     selectFile,
