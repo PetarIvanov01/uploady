@@ -39,6 +39,41 @@ export function MoreIcon(props: IconProps) {
   );
 }
 
+export function UploadIcon(props: IconProps) {
+  return (
+    <svg {...baseIconProps} {...props}>
+      <path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5" />
+      <path d="M5 13v7h14v-7" />
+    </svg>
+  );
+}
+
+export function FolderPlusIcon(props: IconProps) {
+  return (
+    <svg {...baseIconProps} {...props}>
+      <path d="M3 6.5h6l2 2h10v10.75A1.75 1.75 0 0 1 19.25 21H4.75A1.75 1.75 0 0 1 3 19.25z" />
+      <path d="M12 12v5m-2.5-2.5h5" />
+    </svg>
+  );
+}
+
+export function PencilIcon(props: IconProps) {
+  return (
+    <svg {...baseIconProps} {...props}>
+      <path d="m14.5 5.5 4 4M4 20l4.25-1 10.5-10.5a1.75 1.75 0 0 0-2.5-2.5L5.75 16.5z" />
+      <path d="M13.5 7 17 10.5M4 20h16" />
+    </svg>
+  );
+}
+
+export function TrashIcon(props: IconProps) {
+  return (
+    <svg {...baseIconProps} {...props}>
+      <path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
 type FileTypeIconProps = IconProps & {
   fileName: string;
   type: string;

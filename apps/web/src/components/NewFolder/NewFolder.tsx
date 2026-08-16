@@ -2,11 +2,16 @@ import { useState, type FormEvent } from "react";
 import { Button } from "../Button";
 
 type NewFolderProps = {
+  errorMessage?: string;
   onCancel: () => void;
-  onCreate?: (name: string) => Promise<void> | void;
+  onCreate?: (name: string) => Promise<boolean | void> | boolean | void;
 };
 
-export function NewFolder({ onCancel, onCreate }: NewFolderProps) {
+export function NewFolder({
+  errorMessage,
+  onCancel,
+  onCreate,
+}: NewFolderProps) {
   const [folderName, setFolderName] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
@@ -20,7 +25,8 @@ export function NewFolder({ onCancel, onCreate }: NewFolderProps) {
     setIsCreating(true);
 
     try {
-      await onCreate(normalizedName);
+      const created = await onCreate(normalizedName);
+      if (created === false) return;
       setFolderName("");
     } finally {
       setIsCreating(false);
@@ -50,6 +56,11 @@ export function NewFolder({ onCancel, onCreate }: NewFolderProps) {
         type="text"
         value={folderName}
       />
+      {errorMessage && (
+        <p className="mt-2 mb-0 text-xs text-destructive" role="alert">
+          {errorMessage}
+        </p>
+      )}
       <div className="mt-3 flex items-center justify-end gap-2">
         <Button disabled={isCreating} onClick={onCancel}>
           Cancel

@@ -15,6 +15,9 @@ type FileRowProps = {
 
 export function FileRow({ item }: FileRowProps) {
   const folder = isFolder(item);
+  const itemHref = folder
+    ? `/?folder_id=${encodeURIComponent(item.id)}`
+    : `#file-${item.id}`;
 
   return (
     <li
@@ -27,7 +30,7 @@ export function FileRow({ item }: FileRowProps) {
         type={item.type}
       />
 
-      <a className="group min-w-0 py-3" href={`#file-${item.id}`}>
+      <a className="group min-w-0 py-3" href={itemHref}>
         <span
           className="block truncate text-[0.875rem] leading-5 text-ink transition-colors group-hover:text-accent sm:text-[0.9375rem]"
           title={item.name}
@@ -67,7 +70,7 @@ export function FileRow({ item }: FileRowProps) {
         <div className="absolute top-10 right-0 z-20 w-36 rounded-[3px] border border-border-strong bg-paper p-1 shadow-[0_8px_24px_rgb(23_23_23/0.10)]">
           <a
             className="flex min-h-10 items-center rounded-sm px-3 text-xs text-ink hover:bg-surface-muted"
-            href={`#file-${item.id}`}
+            href={itemHref}
           >
             View details
           </a>

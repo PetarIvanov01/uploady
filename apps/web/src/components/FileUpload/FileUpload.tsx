@@ -43,7 +43,7 @@ export function FileUpload({ onUploadSuccess }: FileUploadProps) {
     uploadState.status === "verifying";
 
   return (
-    <div className="w-full min-w-0">
+    <div className={`w-full min-w-0 ${selectedFile ? "col-span-full" : ""}`}>
       <input
         aria-label="Choose a file to upload"
         className="sr-only"
