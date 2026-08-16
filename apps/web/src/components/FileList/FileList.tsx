@@ -17,7 +17,7 @@ export function FileRow({ item }: FileRowProps) {
   const folder = isFolder(item);
   const itemHref = folder
     ? `/?folder_id=${encodeURIComponent(item.id)}`
-    : `#file-${item.id}`;
+    : `/file/${encodeURIComponent(item.id)}`;
 
   return (
     <li

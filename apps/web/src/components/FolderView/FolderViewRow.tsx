@@ -1,10 +1,12 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
+import { Link } from "@tanstack/react-router";
 import { FileTypeIcon, MoreIcon } from "../VaultIcons";
 import { FolderActionMenu } from "./FolderActionMenu";
 import type { FolderViewEntry } from "./folderView.types";
 
 type FolderViewRowProps = {
   entry: FolderViewEntry;
+  folderId: string | null;
   isMenuOpen: boolean;
   isRenaming: boolean;
   isSelected: boolean;
@@ -35,6 +37,7 @@ function folderMetadata(entry: Extract<FolderViewEntry, { kind: "folder" }>) {
 
 export function FolderViewRow({
   entry,
+  folderId,
   isMenuOpen,
   isRenaming,
   isSelected,
@@ -50,7 +53,7 @@ export function FolderViewRow({
 
   useEffect(() => setName(entry.name), [entry.name]);
 
-  function saveName(event: FormEvent<HTMLFormElement>) {
+  function saveName(event: ChangeEvent<HTMLFormElement>) {
     event.preventDefault();
     const normalizedName = name.trim();
     if (normalizedName) onRenameSave(normalizedName);
@@ -107,6 +110,23 @@ export function FolderViewRow({
             </button>
           </div>
         </form>
+      ) : entry.kind === "file" ? (
+        <Link
+          className="group min-w-0 py-1.5 text-left"
+          params={{ fileId: entry.id }}
+          search={folderId ? { folder_id: folderId } : {}}
+          to="/file/$fileId"
+        >
+          <span
+            className="block truncate text-[0.875rem] leading-5 text-ink transition-colors group-hover:text-accent sm:text-[0.9375rem]"
+            title={entry.name}
+          >
+            {entry.name}
+          </span>
+          <span className="mt-0.5 block truncate text-[0.6875rem] leading-5 text-muted sm:text-xs">
+            {metadata}
+          </span>
+        </Link>
       ) : (
         <button
           className="min-w-0 cursor-pointer border-0 bg-transparent py-1.5 text-left"

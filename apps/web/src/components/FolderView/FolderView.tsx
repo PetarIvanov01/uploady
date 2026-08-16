@@ -450,6 +450,7 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
             {visibleEntries.map((entry) => (
               <FolderViewRow
                 entry={entry}
+                folderId={currentFolderId}
                 isMenuOpen={entry.kind === "folder" && menuId === entry.id}
                 isRenaming={renamingId === entry.id}
                 isSelected={selectedId === entry.id}
