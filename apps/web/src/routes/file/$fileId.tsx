@@ -1,18 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-
-type IndexSearch = {
-  folder_id?: string;
-};
+import { getFile } from "../../lib/files";
+import {
+  FilePage,
+  FilePageError,
+  FilePageNotFound,
+  FilePagePending,
+} from "../../pages/file_page";
 
 export const Route = createFileRoute("/file/$fileId")({
-  component: function IndexRoute() {
-    const { fileId } = Route.useParams();
-    return <div>This is the File Page {fileId}</div>;
-  },
-  validateSearch: (search: Record<string, unknown>): IndexSearch => ({
-    folder_id:
-      typeof search.folder_id === "string" && search.folder_id.length > 0
-        ? search.folder_id
-        : undefined,
-  }),
+  component: FilePage,
+  errorComponent: FilePageError,
+  loader: ({ abortController, params }) =>
+    getFile(params.fileId, abortController.signal),
+  notFoundComponent: FilePageNotFound,
+  pendingComponent: FilePagePending,
+  staleTime: 10_000,
 });

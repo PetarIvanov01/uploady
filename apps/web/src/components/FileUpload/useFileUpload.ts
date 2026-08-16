@@ -1,5 +1,9 @@
 import { useRef, useState, type ChangeEvent } from "react";
 import { api } from "../../lib/api";
+import {
+  responseErrorMessage,
+  unknownErrorMessage,
+} from "../../utils/error-message";
 
 const singleUploadLimitBytes = 200 * 1024 * 1024;
 const minimumPhaseDurationMs = 350;
@@ -153,7 +157,10 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
 
       if (response.error !== null) {
         throw new Error(
-          `Could not initialize the upload (${response.status}).`,
+          responseErrorMessage(
+            response.error,
+            `Could not initialize the upload (${response.status}).`,
+          ),
         );
       }
 
@@ -192,8 +199,12 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
         .complete.post({ uploadSessionId: session.uploadSessionId });
 
       if (completionResponse.error !== null) {
-        const message = completionResponse.error.value.message;
-        throw new Error(message || "The upload could not be verified.");
+        throw new Error(
+          responseErrorMessage(
+            completionResponse.error,
+            "The upload could not be verified.",
+          ),
+        );
       }
 
       await waitForMinimumDuration(verifyingStartedAt);
@@ -206,7 +217,7 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
     } catch (error) {
       setUploadState({
         status: "error",
-        message: error instanceof Error ? error.message : "The upload failed.",
+        message: unknownErrorMessage(error, "The upload failed."),
       });
     }
   }

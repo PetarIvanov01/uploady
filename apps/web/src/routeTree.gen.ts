@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as FileFileIdRouteImport } from './routes/file/$fileId'
+import { Route as FolderFolderIdRouteImport } from './routes/folder/$folderId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -22,31 +23,40 @@ const FileFileIdRoute = FileFileIdRouteImport.update({
   path: '/file/$fileId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FolderFolderIdRoute = FolderFolderIdRouteImport.update({
+  id: '/folder/$folderId',
+  path: '/folder/$folderId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/file/$fileId': typeof FileFileIdRoute
+  '/folder/$folderId': typeof FolderFolderIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/file/$fileId': typeof FileFileIdRoute
+  '/folder/$folderId': typeof FolderFolderIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/file/$fileId': typeof FileFileIdRoute
+  '/folder/$folderId': typeof FolderFolderIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/file/$fileId'
+  fullPaths: '/' | '/file/$fileId' | '/folder/$folderId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/file/$fileId'
-  id: '__root__' | '/' | '/file/$fileId'
+  to: '/' | '/file/$fileId' | '/folder/$folderId'
+  id: '__root__' | '/' | '/file/$fileId' | '/folder/$folderId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   FileFileIdRoute: typeof FileFileIdRoute
+  FolderFolderIdRoute: typeof FolderFolderIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -65,12 +75,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FileFileIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/folder/$folderId': {
+      id: '/folder/$folderId'
+      path: '/folder/$folderId'
+      fullPath: '/folder/$folderId'
+      preLoaderRoute: typeof FolderFolderIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   FileFileIdRoute: FileFileIdRoute,
+  FolderFolderIdRoute: FolderFolderIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

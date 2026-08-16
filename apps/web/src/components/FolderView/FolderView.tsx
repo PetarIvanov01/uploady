@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useMemo, useState, type FormEvent } from "react";
+import { useNavigate, useRouter } from "@tanstack/react-router";
+import type { VaultLoaderData } from "../../lib/vault";
 import { formatFileSize } from "../../utils/file-size";
-import { FileSearch, useFileList } from "../FileList";
+import { FileSearch } from "../FileList";
 import { FileUpload } from "../FileUpload";
 import { NewFolder } from "../NewFolder";
 import { FolderPlusIcon, MoreIcon, UploadIcon } from "../VaultIcons";
@@ -9,7 +10,7 @@ import { DeleteFolderSheet } from "./DeleteFolderSheet";
 import { FolderActionMenu } from "./FolderActionMenu";
 import { FolderViewRow } from "./FolderViewRow";
 import type { FolderViewEntry, FolderViewFolder } from "./folderView.types";
-import { useFolderManagement, type FolderMetadata } from "./hooks";
+import { useFolderMutations, type FolderMetadata } from "./hooks";
 
 const updatedFormatter = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
@@ -29,19 +30,15 @@ function toFolderEntry(folder: FolderMetadata): FolderViewFolder {
   };
 }
 
-type BreadcrumbFolder = { id: string; name: string };
 type FolderFormTarget = { parentFolderId: string | null; parentName: string };
 
 type FolderViewProps = {
-  initialFolderId?: string;
+  data: VaultLoaderData;
 };
 
-export function FolderView({ initialFolderId }: FolderViewProps) {
+export function FolderView({ data }: FolderViewProps) {
   const navigate = useNavigate();
-  const [fileListVersion, setFileListVersion] = useState(0);
-  const [path, setPath] = useState<BreadcrumbFolder[]>(() =>
-    initialFolderId ? [{ id: initialFolderId, name: "…" }] : [],
-  );
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -51,53 +48,29 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
     useState<FolderFormTarget | null>(null);
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
 
-  const currentFolderId = path.at(-1)?.id ?? null;
-  const folderManagement = useFolderManagement(currentFolderId);
-  const fileList = useFileList(fileListVersion);
-
-  useEffect(() => {
-    setPath((current) => {
-      if (!initialFolderId) return [];
-
-      const existingIndex = current.findIndex(
-        (folder) => folder.id === initialFolderId,
-      );
-
-      if (existingIndex >= 0) return current.slice(0, existingIndex + 1);
-
-      return [{ id: initialFolderId, name: "…" }];
-    });
-  }, [initialFolderId]);
-
-  useEffect(() => {
-    if (folderManagement.currentFolderPath.length === 0) return;
-
-    setPath(
-      folderManagement.currentFolderPath.map(({ id, name }) => ({ id, name })),
-    );
-  }, [folderManagement.currentFolderPath]);
+  const path = data.breadcrumbs;
+  const currentFolderId = data.currentFolder?.id ?? null;
+  const folderMutations = useFolderMutations();
 
   const folderEntries = useMemo(
-    () => folderManagement.folders.map(toFolderEntry),
-    [folderManagement.folders],
+    () => data.folders.map(toFolderEntry),
+    [data.folders],
   );
-  const currentFolderEntry = folderManagement.currentFolder
-    ? toFolderEntry(folderManagement.currentFolder)
+  const currentFolderEntry = data.currentFolder
+    ? toFolderEntry(data.currentFolder)
     : undefined;
 
   const fileEntries = useMemo<FolderViewEntry[]>(
     () =>
-      currentFolderId === null
-        ? fileList.files.map((file) => ({
-            id: file.id,
-            kind: "file" as const,
-            name: file.name,
-            size: formatFileSize(file.size),
-            type: file.type,
-            updated: formatUpdated(file.createdAt),
-          }))
-        : [],
-    [currentFolderId, fileList.files],
+      data.files.map((file) => ({
+        id: file.id,
+        kind: "file" as const,
+        name: file.name,
+        size: formatFileSize(file.size),
+        type: file.type,
+        updated: formatUpdated(file.createdAt),
+      })),
+    [data.files],
   );
 
   const entries = useMemo<FolderViewEntry[]>(
@@ -115,13 +88,6 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
     (currentFolderEntry?.id === deleteFolderId
       ? currentFolderEntry
       : undefined);
-  const isLoading =
-    folderManagement.listStatus === "loading" ||
-    (currentFolderId === null && fileList.status === "loading");
-  const fileListError =
-    currentFolderId === null && fileList.status === "error"
-      ? fileList.message
-      : undefined;
 
   function closeTransientUi() {
     setFolderFormTarget(null);
@@ -129,7 +95,7 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
     setRenamingId(null);
     setSelectedId(null);
     setDeleteFolderId(null);
-    folderManagement.resetMutation();
+    folderMutations.reset();
   }
 
   function openFolder(entry: FolderViewEntry) {
@@ -139,28 +105,25 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
       return;
     }
 
-    setPath((current) => [...current, { id: entry.id, name: entry.name }]);
     void navigate({
-      search: { folder_id: entry.id },
-      to: "/",
+      params: { folderId: entry.id },
+      to: "/folder/$folderId",
     });
     setQuery("");
     closeTransientUi();
   }
 
   function navigateToRoot() {
-    setPath([]);
-    void navigate({ search: {}, to: "/" });
+    void navigate({ to: "/" });
     setQuery("");
     closeTransientUi();
   }
 
   function navigateToBreadcrumb(index: number) {
     const targetFolder = path[index];
-    setPath((current) => current.slice(0, index + 1));
     void navigate({
-      search: { folder_id: targetFolder.id },
-      to: "/",
+      params: { folderId: targetFolder.id },
+      to: "/folder/$folderId",
     });
     setQuery("");
     closeTransientUi();
@@ -169,27 +132,24 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
   async function createFolder(name: string) {
     if (!folderFormTarget) return false;
 
-    const createdFolder = await folderManagement.createFolder({
+    const createdFolder = await folderMutations.createFolder({
       name,
       parentFolderId: folderFormTarget.parentFolderId,
     });
 
     if (!createdFolder) return false;
 
+    await router.invalidate();
     setFolderFormTarget(null);
     setMenuId(null);
     return true;
   }
 
   async function saveRename(id: string, name: string) {
-    const updatedFolder = await folderManagement.updateFolder(id, { name });
+    const updatedFolder = await folderMutations.updateFolder(id, { name });
     if (!updatedFolder) return;
 
-    setPath((current) =>
-      current.map((folder) =>
-        folder.id === id ? { ...folder, name: updatedFolder.name } : folder,
-      ),
-    );
+    await router.invalidate();
     setRenamingId(null);
   }
 
@@ -201,8 +161,8 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
 
   async function deleteSelectedFolder(folder: FolderViewFolder) {
     const isCurrentFolder = folder.id === currentFolderId;
-    const parentFolderId = folderManagement.currentFolder?.parentFolderId;
-    const deleted = await folderManagement.deleteFolder(folder.id);
+    const parentFolderId = data.currentFolder?.parentFolderId;
+    const deleted = await folderMutations.deleteFolder(folder.id);
     if (!deleted) return;
 
     setDeleteFolderId(null);
@@ -210,36 +170,35 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
     setSelectedId(null);
 
     if (isCurrentFolder) {
-      const parentInPath = path.at(-2);
-      const targetParentId = parentInPath?.id ?? parentFolderId;
-      setPath(
-        targetParentId
-          ? [
-              ...(parentInPath ? path.slice(0, -1) : []),
-              ...(!parentInPath ? [{ id: targetParentId, name: "â€¦" }] : []),
-            ]
-          : [],
-      );
-      void navigate({
-        search: targetParentId ? { folder_id: targetParentId } : {},
-        to: "/",
-      });
+      if (parentFolderId) {
+        await navigate({
+          params: { folderId: parentFolderId },
+          to: "/folder/$folderId",
+        });
+      } else {
+        await navigate({ to: "/" });
+      }
+    } else {
+      await router.invalidate();
     }
   }
 
   const currentLocationName = path.at(-1)?.name ?? "Root";
   const mutationErrors = {
     create:
-      folderManagement.mutationOperation === "create"
-        ? folderManagement.mutationError
+      folderMutations.status === "error" &&
+      folderMutations.operation === "create"
+        ? folderMutations.message
         : undefined,
     delete:
-      folderManagement.mutationOperation === "delete"
-        ? folderManagement.mutationError
+      folderMutations.status === "error" &&
+      folderMutations.operation === "delete"
+        ? folderMutations.message
         : undefined,
     update:
-      folderManagement.mutationOperation === "update"
-        ? folderManagement.mutationError
+      folderMutations.status === "error" &&
+      folderMutations.operation === "update"
+        ? folderMutations.message
         : undefined,
   };
 
@@ -341,12 +300,12 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
           <FolderActionMenu
             folderName={currentFolderEntry.name}
             onDelete={() => {
-              folderManagement.resetMutation();
+              folderMutations.reset();
               setDeleteFolderId(currentFolderEntry.id);
               setMenuId(null);
             }}
             onNewFolderInside={() => {
-              folderManagement.resetMutation();
+              folderMutations.reset();
               setFolderFormTarget({
                 parentFolderId: currentFolderEntry.id,
                 parentName: currentFolderEntry.name,
@@ -355,7 +314,7 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
             }}
             onOpen={() => setMenuId(null)}
             onRename={() => {
-              folderManagement.resetMutation();
+              folderMutations.reset();
               setBreadcrumbRenameName(currentFolderEntry.name);
               setRenamingId(currentFolderEntry.id);
               setMenuId(null);
@@ -364,17 +323,9 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
         )}
       </div>
 
-      {folderManagement.currentFolderStatus === "error" && (
-        <p className="mt-2 mb-0 text-xs text-destructive" role="alert">
-          {folderManagement.currentFolderError}
-        </p>
-      )}
-
       <div className="mt-3 grid grid-cols-2 gap-2.5 sm:gap-3">
         {currentFolderId === null ? (
-          <FileUpload
-            onUploadSuccess={() => setFileListVersion((version) => version + 1)}
-          />
+          <FileUpload onUploadSuccess={() => void router.invalidate()} />
         ) : (
           <button
             className="flex min-h-[3.75rem] cursor-not-allowed items-center justify-center gap-2.5 rounded-[4px] border border-border bg-surface-muted/60 px-3 text-[0.8125rem] text-faint sm:text-sm"
@@ -390,7 +341,7 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
           aria-expanded={folderFormTarget?.parentFolderId === currentFolderId}
           className="flex min-h-[3.75rem] cursor-pointer items-center justify-center gap-2.5 rounded-[4px] border border-border-strong bg-transparent px-3 text-[0.8125rem] text-muted transition-colors hover:border-ink hover:text-ink sm:text-sm"
           onClick={() => {
-            folderManagement.resetMutation();
+            folderMutations.reset();
             setFolderFormTarget({
               parentFolderId: currentFolderId,
               parentName: currentLocationName,
@@ -412,7 +363,7 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
             errorMessage={mutationErrors.create}
             onCancel={() => {
               setFolderFormTarget(null);
-              folderManagement.resetMutation();
+              folderMutations.reset();
             }}
             onCreate={createFolder}
           />
@@ -427,12 +378,8 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
         />
       </div>
 
-      {(folderManagement.listError ||
-        fileListError ||
-        mutationErrors.update) && (
+      {mutationErrors.update && (
         <div className="mt-3 space-y-1 text-xs text-destructive" role="alert">
-          {folderManagement.listError && <p>{folderManagement.listError}</p>}
-          {fileListError && <p>{fileListError}</p>}
           {mutationErrors.update && <p>{mutationErrors.update}</p>}
         </div>
       )}
@@ -446,29 +393,31 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
         </div>
 
         {visibleEntries.length > 0 ? (
-          <ul aria-busy={isLoading} className="m-0 list-none p-0">
+          <ul
+            aria-busy={folderMutations.status === "loading"}
+            className="m-0 list-none p-0"
+          >
             {visibleEntries.map((entry) => (
               <FolderViewRow
                 entry={entry}
-                folderId={currentFolderId}
                 isMenuOpen={entry.kind === "folder" && menuId === entry.id}
                 isRenaming={renamingId === entry.id}
                 isSelected={selectedId === entry.id}
                 key={`${entry.kind}-${entry.id}`}
                 onCancelRename={() => {
                   setRenamingId(null);
-                  folderManagement.resetMutation();
+                  folderMutations.reset();
                 }}
                 onDelete={() => {
                   if (entry.kind === "folder") {
-                    folderManagement.resetMutation();
+                    folderMutations.reset();
                     setSelectedId(entry.id);
                     setDeleteFolderId(entry.id);
                   }
                 }}
                 onNewFolderInside={() => {
                   if (entry.kind === "folder") {
-                    folderManagement.resetMutation();
+                    folderMutations.reset();
                     setFolderFormTarget({
                       parentFolderId: entry.id,
                       parentName: entry.name,
@@ -478,7 +427,7 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
                 }}
                 onOpen={() => openFolder(entry)}
                 onRename={() => {
-                  folderManagement.resetMutation();
+                  folderMutations.reset();
                   setSelectedId(entry.id);
                   setRenamingId(entry.id);
                   setMenuId(null);
@@ -498,19 +447,13 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
         ) : (
           <div className="border-b border-border py-12 text-center">
             <h2 className="m-0 text-sm font-bold text-ink">
-              {isLoading
-                ? "Loading folder…"
-                : normalizedQuery
-                  ? "No matching items"
-                  : "This folder is empty"}
+              {normalizedQuery ? "No matching items" : "This folder is empty"}
             </h2>
-            {!isLoading && (
-              <p className="mt-2 mb-0 text-xs text-muted">
-                {normalizedQuery
-                  ? "Try another search."
-                  : "Create a folder here to get started."}
-              </p>
-            )}
+            <p className="mt-2 mb-0 text-xs text-muted">
+              {normalizedQuery
+                ? "Try another search."
+                : "Create a folder here to get started."}
+            </p>
           </div>
         )}
       </div>
@@ -520,12 +463,12 @@ export function FolderView({ initialFolderId }: FolderViewProps) {
           errorMessage={mutationErrors.delete}
           folder={deleteFolder}
           isDeleting={
-            folderManagement.isMutating &&
-            folderManagement.mutationOperation === "delete"
+            folderMutations.status === "loading" &&
+            folderMutations.operation === "delete"
           }
           onCancel={() => {
             setDeleteFolderId(null);
-            folderManagement.resetMutation();
+            folderMutations.reset();
           }}
           onDelete={() => void deleteSelectedFolder(deleteFolder)}
         />

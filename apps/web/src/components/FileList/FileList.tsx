@@ -16,7 +16,7 @@ type FileRowProps = {
 export function FileRow({ item }: FileRowProps) {
   const folder = isFolder(item);
   const itemHref = folder
-    ? `/?folder_id=${encodeURIComponent(item.id)}`
+    ? `/folder/${encodeURIComponent(item.id)}`
     : `/file/${encodeURIComponent(item.id)}`;
 
   return (

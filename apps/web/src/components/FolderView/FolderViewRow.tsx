@@ -6,7 +6,6 @@ import type { FolderViewEntry } from "./folderView.types";
 
 type FolderViewRowProps = {
   entry: FolderViewEntry;
-  folderId: string | null;
   isMenuOpen: boolean;
   isRenaming: boolean;
   isSelected: boolean;
@@ -37,7 +36,6 @@ function folderMetadata(entry: Extract<FolderViewEntry, { kind: "folder" }>) {
 
 export function FolderViewRow({
   entry,
-  folderId,
   isMenuOpen,
   isRenaming,
   isSelected,
@@ -114,7 +112,6 @@ export function FolderViewRow({
         <Link
           className="group min-w-0 py-1.5 text-left"
           params={{ fileId: entry.id }}
-          search={folderId ? { folder_id: folderId } : {}}
           to="/file/$fileId"
         >
           <span

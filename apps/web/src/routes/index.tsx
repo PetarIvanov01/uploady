@@ -1,19 +1,16 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { FolderViewPage } from "../pages/folder_view_page";
-
-type IndexSearch = {
-  folder_id?: string;
-};
+import { loadVaultContents } from "../lib/vault";
+import {
+  RootVaultPage,
+  VaultPageError,
+  VaultPagePending,
+} from "../pages/vault_page";
 
 export const Route = createFileRoute("/")({
-  component: function IndexRoute() {
-    const { folder_id: folderId } = Route.useSearch();
-    return <FolderViewPage initialFolderId={folderId} />;
-  },
-  validateSearch: (search: Record<string, unknown>): IndexSearch => ({
-    folder_id:
-      typeof search.folder_id === "string" && search.folder_id.length > 0
-        ? search.folder_id
-        : undefined,
-  }),
+  component: RootVaultPage,
+  errorComponent: VaultPageError,
+  loader: ({ abortController }) =>
+    loadVaultContents(null, abortController.signal),
+  pendingComponent: VaultPagePending,
+  staleTime: 10_000,
 });

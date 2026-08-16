@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import {
+  responseErrorMessage,
+  unknownErrorMessage,
+} from "../../utils/error-message";
 
 export type FileMetadata = {
   createdAt: string;
@@ -46,7 +50,12 @@ export function useFileList(refreshKey = 0) {
         const response = await api.v1.uploads.get();
 
         if (response.error !== null) {
-          throw new Error(`Could not load files (${response.status}).`);
+          throw new Error(
+            responseErrorMessage(
+              response.error,
+              `Could not load files (${response.status}).`,
+            ),
+          );
         }
 
         if (isCurrentRequest) {
@@ -57,8 +66,7 @@ export function useFileList(refreshKey = 0) {
           setState((current) => ({
             status: "error",
             files: current.files,
-            message:
-              error instanceof Error ? error.message : "Could not load files.",
+            message: unknownErrorMessage(error, "Could not load files."),
           }));
         }
       }

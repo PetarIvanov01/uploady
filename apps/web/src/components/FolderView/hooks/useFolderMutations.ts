@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../../lib/api";
-import { folderApiErrorMessage, unknownErrorMessage } from "./folderApiError";
+import {
+  responseErrorMessage,
+  unknownErrorMessage,
+} from "../../../utils/error-message";
 import type {
   CreateFolderInput,
   FolderMetadata,
@@ -57,7 +60,7 @@ export function useFolderMutations({
 
         if (response.error !== null) {
           throw new Error(
-            folderApiErrorMessage(
+            responseErrorMessage(
               response.error,
               `Could not create the folder (${response.status}).`,
             ),
@@ -107,7 +110,7 @@ export function useFolderMutations({
 
         if (response.error !== null) {
           throw new Error(
-            folderApiErrorMessage(
+            responseErrorMessage(
               response.error,
               `Could not update the folder (${response.status}).`,
             ),
@@ -155,7 +158,7 @@ export function useFolderMutations({
 
         if (response.error !== null) {
           throw new Error(
-            folderApiErrorMessage(
+            responseErrorMessage(
               response.error,
               `Could not delete the folder (${response.status}).`,
             ),

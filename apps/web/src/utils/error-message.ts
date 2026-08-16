@@ -1,4 +1,4 @@
-export function folderApiErrorMessage(error: unknown, fallback: string) {
+export function responseErrorMessage(error: unknown, fallback: string) {
   if (typeof error !== "object" || error === null || !("value" in error)) {
     return fallback;
   }
