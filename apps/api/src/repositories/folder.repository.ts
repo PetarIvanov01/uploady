@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { database, type Database } from "../database";
 import { folders } from "../database/schema";
+import { hasDatabaseErrorCode } from "./database-error";
 
 export type FolderRecord = typeof folders.$inferSelect;
 
@@ -88,12 +89,7 @@ export function initFolderRepository({
 
       return folder ? "DELETED" : "NOT_FOUND";
     } catch (error) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        error.code === "23503"
-      ) {
+      if (hasDatabaseErrorCode(error, "23503")) {
         return "NOT_EMPTY";
       }
 

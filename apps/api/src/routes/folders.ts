@@ -109,16 +109,23 @@ export const folders = new Elysia({ prefix: "/folders" })
   .delete(
     "/:id",
     async ({ params, status }) => {
-      const result = await deleteFolder(params.id);
+      try {
+        const result = await deleteFolder(params.id);
 
-      if (result.status === "NOT_FOUND") {
-        return status(404, { message: "Folder not found" });
-      }
-      if (result.status === "NOT_EMPTY") {
-        return status(409, { message: "Folder must be empty before deletion" });
-      }
+        if (result.status === "NOT_FOUND") {
+          return status(404, { message: "Folder not found" });
+        }
+        if (result.status === "NOT_EMPTY") {
+          return status(409, {
+            message: "Folder must be empty before deletion",
+          });
+        }
 
-      return status(204, undefined);
+        return status(204, undefined);
+      } catch (error) {
+        console.error("Internal error: ", error);
+        return status(500, { message: "Internal Server Error." });
+      }
     },
     {
       params: folderIdParamsSchema,
@@ -126,6 +133,7 @@ export const folders = new Elysia({ prefix: "/folders" })
         204: t.Void(),
         404: errorMessageSchema,
         409: errorMessageSchema,
+        500: errorMessageSchema,
       },
     },
   );
