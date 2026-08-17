@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { FolderViewFolder } from "./folderView.types";
 
 type DeleteFolderSheetProps = {
@@ -15,6 +16,18 @@ export function DeleteFolderSheet({
   onCancel,
   onDelete,
 }: DeleteFolderSheetProps) {
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const hasKnownCounts =
+    typeof folder.fileCount === "number" &&
+    typeof folder.folderCount === "number";
+  const itemCount = (folder.fileCount ?? 0) + (folder.folderCount ?? 0);
+
+  const contentsDescription = hasKnownCounts
+    ? itemCount === 0
+      ? "This folder is empty."
+      : `This folder contains ${folder.fileCount} ${folder.fileCount === 1 ? "file" : "files"} and ${folder.folderCount} ${folder.folderCount === 1 ? "folder" : "folders"} directly inside it.`
+    : "This folder may contain files or nested folders.";
+
   return (
     <section
       aria-describedby="delete-folder-description"
@@ -37,11 +50,21 @@ export function DeleteFolderSheet({
         className="mt-1 text-[0.75rem] leading-5 text-muted sm:text-[0.8125rem]"
         id="delete-folder-description"
       >
+        <p className="m-0">{contentsDescription}</p>
         <p className="m-0">
-          This folder must be empty before it can be deleted.
+          The folder and everything inside it will be permanently deleted.
         </p>
-        <p className="m-0">Files or folders inside it will prevent deletion.</p>
       </div>
+      <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-[4px] border border-destructive/30 bg-destructive/[0.04] px-3 py-3 text-[0.75rem] leading-5 text-destructive sm:text-[0.8125rem]">
+        <input
+          checked={isConfirmed}
+          className="mt-0.5 size-4 shrink-0 accent-current"
+          disabled={isDeleting}
+          onChange={(event) => setIsConfirmed(event.target.checked)}
+          type="checkbox"
+        />
+        <span>I understand this action is permanent.</span>
+      </label>
       {errorMessage && (
         <p className="mt-2 mb-0 text-xs text-destructive" role="alert">
           {errorMessage}
@@ -58,7 +81,7 @@ export function DeleteFolderSheet({
         </button>
         <button
           className="min-h-14 cursor-pointer border-0 bg-transparent px-3 text-[0.8125rem] text-destructive hover:bg-destructive/[0.05] disabled:cursor-not-allowed disabled:text-faint sm:text-sm"
-          disabled={isDeleting}
+          disabled={isDeleting || !isConfirmed}
           onClick={onDelete}
           type="button"
         >

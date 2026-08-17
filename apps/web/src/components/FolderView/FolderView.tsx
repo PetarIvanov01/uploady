@@ -472,6 +472,7 @@ export function FolderView({ data }: FolderViewProps) {
             folderMutations.status === "loading" &&
             folderMutations.operation === "delete"
           }
+          key={deleteFolder.id}
           onCancel={() => {
             setDeleteFolderId(null);
             folderMutations.reset();
