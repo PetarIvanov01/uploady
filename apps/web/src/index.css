@@ -37,6 +37,7 @@
 
   html {
     min-width: 320px;
+    scrollbar-gutter: stable;
     background-color: var(--color-paper);
     -webkit-text-size-adjust: 100%;
     text-size-adjust: 100%;
