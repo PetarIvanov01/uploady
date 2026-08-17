@@ -12,26 +12,52 @@ import { formatFileSize } from "../utils/file-size";
 const fileRoute = getRouteApi("/file/$fileId");
 
 export function FilePage() {
-  const { file } = fileRoute.useLoaderData();
+  const { breadcrumbs, file } = fileRoute.useLoaderData();
 
   return (
     <section className="mx-auto w-full max-w-4xl pt-5 sm:pt-7">
-      {file.parentFolderId ? (
+      <nav
+        aria-label="Breadcrumb"
+        className="flex min-h-11 min-w-0 items-center gap-2 overflow-hidden whitespace-nowrap text-[0.8125rem] text-muted sm:gap-3 sm:text-sm"
+      >
         <Link
-          className="inline-flex min-h-11 items-center text-xs text-muted transition-colors hover:text-ink"
-          params={{ folderId: file.parentFolderId }}
-          to="/folder/$folderId"
-        >
-          ← Back to folder
-        </Link>
-      ) : (
-        <Link
-          className="inline-flex min-h-11 items-center text-xs text-muted transition-colors hover:text-ink"
+          aria-label="Root"
+          className="transition-colors hover:text-ink"
+          title="Root"
           to="/"
         >
-          ← Back to root
+          /
         </Link>
-      )}
+        {breadcrumbs.map((folder, index) => (
+          <span className="contents" key={folder.id}>
+            {index > 0 && (
+              <span aria-hidden="true" className="shrink-0">
+                /
+              </span>
+            )}
+            <Link
+              className="min-w-0 truncate transition-colors hover:text-ink"
+              params={{ folderId: folder.id }}
+              title={folder.name}
+              to="/folder/$folderId"
+            >
+              {folder.name}
+            </Link>
+          </span>
+        ))}
+        {breadcrumbs.length > 0 && (
+          <span aria-hidden="true" className="shrink-0">
+            /
+          </span>
+        )}
+        <span
+          aria-current="page"
+          className="min-w-0 flex-1 truncate text-accent"
+          title={file.name}
+        >
+          {file.name}
+        </span>
+      </nav>
 
       <div className="mt-4 border-y border-border py-5 sm:py-7">
         <div className="flex min-w-0 items-start gap-3 sm:gap-4">

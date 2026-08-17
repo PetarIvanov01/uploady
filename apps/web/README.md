@@ -42,11 +42,11 @@ development.
 
 ## Route map
 
-| Browser route       | Source                            | Loader and rendered behavior                                                    |
-| ------------------- | --------------------------------- | ------------------------------------------------------------------------------- |
-| `/`                 | `src/routes/index.tsx`            | Loads `GET /api/v1/vault`; renders the root `FolderView`.                       |
-| `/folder/$folderId` | `src/routes/folder/$folderId.tsx` | Loads `GET /api/v1/vault/folders/:id`; renders breadcrumbs and direct contents. |
-| `/file/$fileId`     | `src/routes/file/$fileId.tsx`     | Loads `GET /api/v1/vault/files/:id`; renders metadata only.                     |
+| Browser route       | Source                            | Loader and rendered behavior                                                     |
+| ------------------- | --------------------------------- | -------------------------------------------------------------------------------- |
+| `/`                 | `src/routes/index.tsx`            | Loads `GET /api/v1/vault`; renders the root `FolderView`.                        |
+| `/folder/$folderId` | `src/routes/folder/$folderId.tsx` | Loads `GET /api/v1/vault/folders/:id`; renders breadcrumbs and direct contents.  |
+| `/file/$fileId`     | `src/routes/file/$fileId.tsx`     | Loads `GET /api/v1/vault/files/:id`; renders its folder breadcrumb and metadata. |
 
 All routes share `RootLayout`, which provides the Uplody header and `<Outlet>`.
 The header hamburger button is visual only and has no menu behavior.
@@ -155,8 +155,10 @@ a known scalability limitation. Multipart upload is not available.
 ### File detail
 
 `src/lib/files.ts` maps a backend `404` to TanStack Router `notFound` and wraps
-other failures in `FileLoadError`. `FilePage` shows name, size, MIME type,
-status, creation time, ID, and a link to the containing folder/root.
+other failures in `FileLoadError`. `FilePage` shows a root-to-file breadcrumb,
+with navigable containing folders and a non-navigable file name, followed by
+the file's name, size, MIME type, status, creation time, and ID. Long breadcrumb
+labels truncate with an ellipsis and expose their full value as a title.
 
 There is no preview, download button, version history, rename, move, or delete
 behavior for individual files. The backend also does not expose these yet.
