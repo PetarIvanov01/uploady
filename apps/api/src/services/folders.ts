@@ -87,28 +87,6 @@ async function validateParent(
   return "VALID";
 }
 
-export async function listFolders(
-  parentFolderId: string | null,
-): Promise<FolderResult[] | null> {
-  if (
-    parentFolderId &&
-    !(await folderRepository.findById(parentFolderId, temporaryUserId))
-  ) {
-    return null;
-  }
-
-  const records = await folderRepository.findAll(
-    temporaryUserId,
-    parentFolderId,
-  );
-  return records.map(toFolderResult);
-}
-
-export async function retrieveFolder(id: string): Promise<FolderResult | null> {
-  const folder = await folderRepository.findById(id, temporaryUserId);
-  return folder ? toFolderResult(folder) : null;
-}
-
 export async function createFolder(
   input: CreateFolderInput,
 ): Promise<CreateFolderResult> {

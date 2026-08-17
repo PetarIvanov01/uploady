@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { database, type Database } from "../database";
 import { files, fileVersions, uploadSessions } from "../database/schema";
@@ -10,15 +10,6 @@ export interface CreateSingleUploadSessionInput {
   size: number;
   type: string;
   userId: string;
-}
-
-export interface FileRecord {
-  createdAt: Date;
-  id: string;
-  mimeType: string;
-  name: string;
-  size: number;
-  status: (typeof files.$inferSelect)["status"];
 }
 
 export interface CreatedSingleUploadSession {
@@ -46,49 +37,6 @@ interface FileRepositoryDependencies {
 export type FileRepository = ReturnType<typeof initFileRepository>;
 
 export function initFileRepository({ database }: FileRepositoryDependencies) {
-  async function findAll(): Promise<FileRecord[]> {
-    const records = await database
-      .select({
-        createdAt: files.createdAt,
-        id: files.id,
-        mimeType: fileVersions.contentType,
-        name: files.name,
-        size: fileVersions.sizeBytes,
-        status: files.status,
-      })
-      .from(files)
-      .innerJoin(fileVersions, eq(files.currentVersionId, fileVersions.id))
-      .where(ne(files.status, "DELETED"));
-
-    return records.map((record) => ({
-      ...record,
-      mimeType: record.mimeType ?? "application/octet-stream",
-    }));
-  }
-
-  async function findById(id: string): Promise<FileRecord | null> {
-    const [record] = await database
-      .select({
-        createdAt: files.createdAt,
-        id: files.id,
-        mimeType: fileVersions.contentType,
-        name: files.name,
-        size: fileVersions.sizeBytes,
-        status: files.status,
-      })
-      .from(files)
-      .innerJoin(fileVersions, eq(files.currentVersionId, fileVersions.id))
-      .where(and(eq(files.id, id), ne(files.status, "DELETED")))
-      .limit(1);
-
-    return record
-      ? {
-          ...record,
-          mimeType: record.mimeType ?? "application/octet-stream",
-        }
-      : null;
-  }
-
   async function createSingleUploadSession(
     input: CreateSingleUploadSessionInput,
   ): Promise<CreatedSingleUploadSession> {
@@ -247,8 +195,6 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
     completeSingleUploadSession,
     createSingleUploadSession,
     failSingleUploadSession,
-    findAll,
-    findById,
     findSingleUploadSession,
   };
 }

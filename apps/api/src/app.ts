@@ -4,6 +4,7 @@ import { health } from "./routes/health";
 import { uploads } from "./routes/uploads";
 import "./s3";
 import { folders } from "./routes/folders";
+import { vault } from "./routes/vault";
 
 const frontendOrigin =
   process.env.NODE_ENV === "production" ? "" : "http://localhost:5173";
@@ -16,6 +17,7 @@ export const app = new Elysia({ prefix: "/api/v1" })
   )
   .use(health)
   .use(uploads)
-  .use(folders);
+  .use(folders)
+  .use(vault);
 
 export type App = typeof app;

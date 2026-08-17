@@ -3,7 +3,6 @@ import {
   completeSingleUploadBodySchema,
   completeSingleUpload,
 } from "../services/complete-upload";
-import { listFiles } from "../services/list-files";
 import {
   abortMultipartUpload,
   completeMultipartUpload,
@@ -14,27 +13,12 @@ import {
   multipartPartParamsSchema,
   multipartUploadBodySchema,
 } from "../services/multipart-upload";
-import { retrieveFile } from "../services/retrieve-file";
 import {
   initiateSingleUpload,
   SINGLE_UPLOAD_LIMIT_BYTES,
   singleUploadBodySchema,
   SingleUploadTooLargeError,
 } from "../services/upload-file";
-
-const fileMetadataSchema = t.Object({
-  createdAt: t.String(),
-  id: t.String({ format: "uuid" }),
-  name: t.String(),
-  size: t.Number(),
-  status: t.Union([
-    t.Literal("UPLOADING"),
-    t.Literal("READY"),
-    t.Literal("FAILED"),
-    t.Literal("DELETED"),
-  ]),
-  type: t.String(),
-});
 
 const errorMessageSchema = t.Object({ message: t.String() });
 const uploadIdParamsSchema = t.Object({
@@ -208,24 +192,5 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     {
       params: uploadIdParamsSchema,
       response: { 204: t.Void(), 501: errorMessageSchema },
-    },
-  )
-  .get("", listFiles, {
-    response: { 200: t.Array(fileMetadataSchema) },
-  })
-  .get(
-    "/:id",
-    async ({ params, status }) => {
-      const file = await retrieveFile(params.id);
-
-      if (!file) {
-        return status(404, { message: "File not found" });
-      }
-
-      return file;
-    },
-    {
-      params: t.Object({ id: t.String({ format: "uuid" }) }),
-      response: { 200: fileMetadataSchema, 404: errorMessageSchema },
     },
   );

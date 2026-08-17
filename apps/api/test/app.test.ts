@@ -42,6 +42,29 @@ const fileRecord = {
   status: "READY" as const,
 };
 
+const rootFolderEntryRecord = {
+  ...folderRecord,
+  fileCount: 0,
+  folderCount: 1,
+  kind: "folder" as const,
+};
+
+const childFolderEntryRecord = {
+  ...childFolderRecord,
+  fileCount: 0,
+  folderCount: 0,
+  kind: "folder" as const,
+};
+
+const rootFileEntryRecord = {
+  ...fileRecord,
+  createdAt,
+  kind: "file" as const,
+  parentFolderId: null,
+  type: "text/plain",
+  updatedAt: createdAt,
+};
+
 const singleUploadSession = {
   contentType: "text/plain",
   expiresAt: new Date(Date.now() + 60_000),
@@ -75,8 +98,6 @@ await mock.module("../src/repositories/file.repository", () => ({
       uploadSessionId,
     }),
     failSingleUploadSession: async () => undefined,
-    findAll: async () => [fileRecord],
-    findById: async (id: string) => (id === fileId ? fileRecord : null),
     findSingleUploadSession: async (
       requestedFileId: string,
       requestedSessionId: string,
@@ -94,8 +115,6 @@ await mock.module("../src/repositories/folder.repository", () => ({
       ...input,
       id: createdFolderId,
     }),
-    findAll: async (_userId: string, parentFolderId: string | null) =>
-      parentFolderId === null ? [folderRecord] : [childFolderRecord],
     findById: async (id: string) => {
       if (id === folderId) return folderRecord;
       if (id === childFolderId) return childFolderRecord;
@@ -106,6 +125,27 @@ await mock.module("../src/repositories/folder.repository", () => ({
       ...(id === childFolderId ? childFolderRecord : folderRecord),
       ...input,
     }),
+  },
+}));
+
+await mock.module("../src/repositories/vault-read.repository", () => ({
+  vaultReadRepository: {
+    findEntries: async (_userId: string, parentFolderId: string | null) => {
+      if (parentFolderId === null) {
+        return [rootFolderEntryRecord, rootFileEntryRecord];
+      }
+      if (parentFolderId === folderId) return [childFolderEntryRecord];
+      return [];
+    },
+    findFile: async (_userId: string, requestedFileId: string) =>
+      requestedFileId === fileId ? rootFileEntryRecord : null,
+    findFolderPath: async (_userId: string, requestedFolderId: string) => {
+      if (requestedFolderId === folderId) return [folderRecord];
+      if (requestedFolderId === childFolderId) {
+        return [folderRecord, childFolderRecord];
+      }
+      return [];
+    },
   },
 }));
 
@@ -205,66 +245,102 @@ describe("API", () => {
     });
   });
 
-  it("retrieves uploaded file metadata", async () => {
+  it("retrieves the root vault read model", async () => {
     const response = await app.handle(
-      new Request(`http://localhost/api/v1/uploads/${fileId}`),
+      new Request("http://localhost/api/v1/vault"),
     );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      createdAt,
-      id: fileId,
-      name: "vault-note.txt",
-      size: 12,
-      status: "READY",
-      type: "text/plain",
+      breadcrumbs: [],
+      entries: [
+        {
+          counts: { files: 0, folders: 1 },
+          createdAt,
+          id: folderId,
+          kind: "folder",
+          name: "Projects",
+          updatedAt: createdAt,
+        },
+        {
+          createdAt,
+          id: fileId,
+          kind: "file",
+          name: "vault-note.txt",
+          size: 12,
+          status: "READY",
+          type: "text/plain",
+          updatedAt: createdAt,
+        },
+      ],
+      location: { kind: "root" },
     });
   });
 
-  it("lists uploaded file metadata", async () => {
+  it("retrieves a nested folder vault read model", async () => {
     const response = await app.handle(
-      new Request("http://localhost/api/v1/uploads"),
+      new Request(`http://localhost/api/v1/vault/folders/${childFolderId}`),
     );
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
-      {
+    expect(await response.json()).toEqual({
+      breadcrumbs: [
+        { id: folderId, name: "Projects" },
+        { id: childFolderId, name: "System Design" },
+      ],
+      entries: [],
+      location: {
+        createdAt,
+        id: childFolderId,
+        kind: "folder",
+        name: "System Design",
+        parentFolderId: folderId,
+        updatedAt: createdAt,
+      },
+    });
+  });
+
+  it("returns 404 for an unknown vault folder", async () => {
+    const response = await app.handle(
+      new Request(
+        "http://localhost/api/v1/vault/folders/cc2f5e63-2308-4e3f-8f86-694163b2f2ec",
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ message: "Folder not found" });
+  });
+
+  it("retrieves the file vault read model", async () => {
+    const response = await app.handle(
+      new Request(`http://localhost/api/v1/vault/files/${fileId}`),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      breadcrumbs: [],
+      file: {
         createdAt,
         id: fileId,
         name: "vault-note.txt",
+        parentFolderId: null,
         size: 12,
         status: "READY",
         type: "text/plain",
+        updatedAt: createdAt,
       },
-    ]);
+    });
   });
 
-  it("returns 404 when file metadata does not exist", async () => {
+  it("returns 404 for an unknown vault file", async () => {
     const response = await app.handle(
       new Request(
-        "http://localhost/api/v1/uploads/cc2f5e63-2308-4e3f-8f86-694163b2f2ec",
+        "http://localhost/api/v1/vault/files/cc2f5e63-2308-4e3f-8f86-694163b2f2ec",
       ),
     );
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ message: "File not found" });
-  });
-
-  it("lists folders in the vault root", async () => {
-    const response = await app.handle(
-      new Request("http://localhost/api/v1/folders"),
-    );
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([
-      {
-        createdAt,
-        id: folderId,
-        name: "Projects",
-        parentFolderId: null,
-        updatedAt: createdAt,
-      },
-    ]);
   });
 
   it("creates a nested folder", async () => {

@@ -1,4 +1,4 @@
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { database, type Database } from "../database";
 import { folders } from "../database/schema";
 import { hasDatabaseErrorCode } from "./database-error";
@@ -27,23 +27,6 @@ export type FolderRepository = ReturnType<typeof initFolderRepository>;
 export function initFolderRepository({
   database,
 }: FolderRepositoryDependencies) {
-  async function findAll(
-    userId: string,
-    parentFolderId: string | null,
-  ): Promise<FolderRecord[]> {
-    return database
-      .select()
-      .from(folders)
-      .where(
-        and(
-          eq(folders.userId, userId),
-          parentFolderId === null
-            ? isNull(folders.parentFolderId)
-            : eq(folders.parentFolderId, parentFolderId),
-        ),
-      );
-  }
-
   async function findById(
     id: string,
     userId: string,
@@ -97,7 +80,7 @@ export function initFolderRepository({
     }
   }
 
-  return { create, findAll, findById, remove, update };
+  return { create, findById, remove, update };
 }
 
 export const folderRepository = initFolderRepository({ database });

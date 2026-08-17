@@ -3,8 +3,6 @@ import {
   createFolder,
   createFolderBodySchema,
   deleteFolder,
-  listFolders,
-  retrieveFolder,
   updateFolder,
   updateFolderBodySchema,
 } from "../services/folders";
@@ -24,30 +22,6 @@ const folderIdParamsSchema = t.Object({
 const errorMessageSchema = t.Object({ message: t.String() });
 
 export const folders = new Elysia({ prefix: "/folders" })
-  .get(
-    "",
-    async ({ query, status }) => {
-      const result = await listFolders(query.parentFolderId ?? null);
-      return result ?? status(404, { message: "Parent folder not found" });
-    },
-    {
-      query: t.Object({
-        parentFolderId: t.Optional(t.String({ format: "uuid" })),
-      }),
-      response: { 200: t.Array(folderSchema), 404: errorMessageSchema },
-    },
-  )
-  .get(
-    "/:id",
-    async ({ params, status }) => {
-      const folder = await retrieveFolder(params.id);
-      return folder ?? status(404, { message: "Folder not found" });
-    },
-    {
-      params: folderIdParamsSchema,
-      response: { 200: folderSchema, 404: errorMessageSchema },
-    },
-  )
   .post(
     "",
     async ({ body, status }) => {
