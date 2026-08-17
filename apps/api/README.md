@@ -269,11 +269,21 @@ npm run dev:api
 npm run build --workspace @uploady/api
 npm run test --workspace @uploady/api
 npm run check
+npm run dead-code
+npm run dead-code:files
 npm run format --workspace @uploady/api
 npm run db:generate
 npm run db:migrate
 npm run db:studio
 ```
+
+Oxlint handles issues within reachable source files. Root-level Knip handles
+unused files, exports, and dependencies across both workspaces;
+`dead-code:files` limits that analysis to unreachable files. `knip.json`
+disables Knip's Drizzle plugin because loading `drizzle.config.ts` without
+`DATABASE_URL` intentionally fails; the config is registered as a static entry
+instead. `@knipignore` is reserved for explicitly documented, staged
+primitives such as the future download and multipart implementation.
 
 After editing `src/database/schema.ts`:
 

@@ -17,6 +17,8 @@
     "docker:build": "docker build --file apps/api/Dockerfile --tag uploady-api .",
     "docker:down": "docker compose down",
     "docker:up": "docker compose up --build",
+    "dead-code": "knip",
+    "dead-code:files": "knip --files",
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "format": "turbo run format",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "husky": "^9.1.7",
+    "knip": "^6.32.2",
     "oxlint": "^1.78.0",
     "oxlint-tsgolint": "^7.0.2001",
     "prettier": "^3.7.4",

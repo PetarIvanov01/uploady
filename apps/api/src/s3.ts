@@ -38,6 +38,7 @@ export const s3 = new S3Client({
   },
 });
 
+/** @knipignore Reserved for the file-download endpoint. */
 export const getUrl = async (objectKey: string) =>
   getSignedUrl(
     s3,

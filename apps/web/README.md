@@ -15,8 +15,7 @@ vault. It provides:
 - root-level direct-to-S3 file uploads with progress and completion checks;
 - client-side search over the currently loaded folder.
 
-The active UI is `FolderView`. Some older generic components remain in the
-tree but are not mounted by routed pages; see the file map and known gaps.
+The active vault UI is `FolderView`.
 
 ## Agent startup contract
 
@@ -167,8 +166,7 @@ behavior for individual files. The backend also does not expose these yet.
 ```text
 apps/web/
 ├── public/
-│   ├── favicon.svg                 browser icon
-│   └── icons.svg                   static icon asset
+│   └── favicon.svg                 browser icon
 ├── src/
 │   ├── main.tsx                    router creation, registration, React root
 │   ├── routeTree.gen.ts            generated; never edit manually
@@ -208,16 +206,11 @@ apps/web/
 │       │   └── NewFolder.tsx        controlled create-folder form
 │       └── FileList/
 │           ├── FileSearch.tsx       active search input; `/` focuses it
-│           ├── FileList.tsx         older generic list, currently not mounted
 │           └── file.types.ts        metadata type reused by vault mapping
 ├── vite.config.ts                   plugins and local API proxy
 ├── tsconfig*.json                   app/node project configuration
 └── package.json                     workspace scripts and dependencies
 ```
-
-`EmptyState.tsx` and `FilterPills.tsx` are also currently unused. `FileList.tsx`
-is not the active routed list; `FolderViewRow.tsx` is. Verify usage with `rg`
-before modifying or deleting any apparently redundant component.
 
 ## Styling conventions
 
@@ -250,8 +243,15 @@ npm run build --workspace @uploady/web
 npm run lint --workspace @uploady/web
 npm run format --workspace @uploady/web
 npm run check
+npm run dead-code
+npm run dead-code:files
 npm run build
 ```
+
+Oxlint handles issues within reachable source files. Root-level Knip handles
+unused files, exports, and dependencies across both workspaces;
+`dead-code:files` limits that analysis to unreachable files. Keep Knip's
+configuration narrow, and investigate a finding before adding an exclusion.
 
 There is currently no web test script or automated frontend test suite. A root
 `npm run test` exercises packages that define test tasks, which currently means
@@ -281,9 +281,7 @@ the API behavior rather than browser components.
    children only and fully client-side.
 7. Implement authentication and session-aware user state.
 8. Implement the header navigation menu or remove the inert button.
-9. Decide whether to remove or reintegrate `FileList`, `FilterPills`, and
-   `EmptyState`.
-10. Add component, hook, route-loader, upload, and browser integration tests.
+9. Add component, hook, route-loader, upload, and browser integration tests.
 
 ## Invariants for future agents
 
@@ -298,5 +296,3 @@ the API behavior rather than browser components.
   visible vault.
 - Keep `null` distinct from omission for `parentFolderId`: null means root;
   omission means do not change the parent in a PATCH.
-- Check whether a component is actively mounted before extending it; the tree
-  contains older unused presentation components.

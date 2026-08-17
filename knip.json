@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreExportsUsedInFile": true,
+  "tags": ["-knipignore"],
+  "workspaces": {
+    "apps/api": {
+      "drizzle": false,
+      "entry": ["drizzle.config.ts"]
+    }
+  }
+}

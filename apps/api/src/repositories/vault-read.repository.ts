@@ -44,8 +44,6 @@ interface VaultReadRepositoryDependencies {
   database: Database;
 }
 
-export type VaultReadRepository = ReturnType<typeof initVaultReadRepository>;
-
 export function initVaultReadRepository({
   database,
 }: VaultReadRepositoryDependencies) {

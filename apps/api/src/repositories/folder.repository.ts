@@ -21,8 +21,6 @@ interface FolderRepositoryDependencies {
   database: Database;
 }
 
-export type FolderRepository = ReturnType<typeof initFolderRepository>;
-
 export function initFolderRepository({
   database,
 }: FolderRepositoryDependencies) {

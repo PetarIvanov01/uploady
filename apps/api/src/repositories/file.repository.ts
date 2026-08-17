@@ -34,8 +34,6 @@ interface FileRepositoryDependencies {
   database: Database;
 }
 
-export type FileRepository = ReturnType<typeof initFileRepository>;
-
 export function initFileRepository({ database }: FileRepositoryDependencies) {
   async function createSingleUploadSession(
     input: CreateSingleUploadSessionInput,

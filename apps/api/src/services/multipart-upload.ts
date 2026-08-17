@@ -1,8 +1,11 @@
 import { t, type UnwrapSchema } from "elysia";
 import { SINGLE_UPLOAD_LIMIT_BYTES } from "./upload-file";
 
+/** @knipignore Reserved for multipart implementation. */
 export const MULTIPART_MIN_PART_BYTES = 5 * 1024 * 1024; // 5 MB;
+/** @knipignore Reserved for multipart implementation. */
 export const MULTIPART_DEFAULT_PART_BYTES = 100 * 1024 * 1024; // 100 MB;
+/** @knipignore Reserved for multipart implementation. */
 export const MULTIPART_MAX_PART_BYTES = 5 * 1024 * 1024 * 1024; // 5 GB;
 export const MULTIPART_MAX_PARTS = 10_000;
 export const MULTIPART_MAX_FILE_BYTES =
