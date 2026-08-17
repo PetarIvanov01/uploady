@@ -54,6 +54,7 @@ export const folders = pgTable("folders", {
     .references(() => users.id),
   parentFolderId: uuid("parent_folder_id").references(
     (): AnyPgColumn => folders.id,
+    { onDelete: "cascade" },
   ),
   name: varchar("name", { length: 255 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -69,7 +70,9 @@ export const files = pgTable("files", {
   userId: uuid("user_id")
     .notNull()
     .references(() => users.id),
-  parentFolderId: uuid("parent_folder_id").references(() => folders.id),
+  parentFolderId: uuid("parent_folder_id").references(() => folders.id, {
+    onDelete: "cascade",
+  }),
   name: varchar("name", { length: 255 }).notNull(),
   currentVersionId: uuid("current_version_id").references(
     (): AnyPgColumn => fileVersions.id,

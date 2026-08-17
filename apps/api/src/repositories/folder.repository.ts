@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { database, type Database } from "../database";
 import { folders } from "../database/schema";
-import { hasDatabaseErrorCode } from "./database-error";
 
 export type FolderRecord = typeof folders.$inferSelect;
 
@@ -16,7 +15,7 @@ export interface UpdateFolderInput {
   parentFolderId?: string | null;
 }
 
-export type RemoveFolderResult = "DELETED" | "NOT_EMPTY" | "NOT_FOUND";
+export type RemoveFolderResult = "DELETED" | "NOT_FOUND";
 
 interface FolderRepositoryDependencies {
   database: Database;
@@ -64,20 +63,12 @@ export function initFolderRepository({
     id: string,
     userId: string,
   ): Promise<RemoveFolderResult> {
-    try {
-      const [folder] = await database
-        .delete(folders)
-        .where(and(eq(folders.id, id), eq(folders.userId, userId)))
-        .returning({ id: folders.id });
+    const [folder] = await database
+      .delete(folders)
+      .where(and(eq(folders.id, id), eq(folders.userId, userId)))
+      .returning({ id: folders.id });
 
-      return folder ? "DELETED" : "NOT_FOUND";
-    } catch (error) {
-      if (hasDatabaseErrorCode(error, "23503")) {
-        return "NOT_EMPTY";
-      }
-
-      throw error;
-    }
+    return folder ? "DELETED" : "NOT_FOUND";
   }
 
   return { create, findById, remove, update };

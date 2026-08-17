@@ -45,8 +45,7 @@ export type UpdateFolderResult =
   | { status: "PARENT_NOT_FOUND" }
   | { status: "NOT_FOUND" };
 
-export type DeleteFolderResult =
-  { status: "DELETED" } | { status: "NOT_EMPTY" | "NOT_FOUND" };
+export type DeleteFolderResult = { status: "DELETED" | "NOT_FOUND" };
 
 // TODO: Replace this with the authenticated user's ID once auth is introduced.
 const temporaryUserId = "9e9a548c-dced-4f30-958d-19d423b53028";

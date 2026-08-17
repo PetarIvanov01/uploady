@@ -120,7 +120,8 @@ await mock.module("../src/repositories/folder.repository", () => ({
       if (id === childFolderId) return childFolderRecord;
       return null;
     },
-    remove: async (id: string) => (id === folderId ? "NOT_EMPTY" : "DELETED"),
+    remove: async (id: string) =>
+      id === folderId || id === childFolderId ? "DELETED" : "NOT_FOUND",
     update: async (id: string, _userId: string, input: UpdateFolderInput) => ({
       ...(id === childFolderId ? childFolderRecord : folderRecord),
       ...input,
@@ -399,17 +400,15 @@ describe("API", () => {
     });
   });
 
-  it("rejects deleting a non-empty folder", async () => {
+  it("deletes a non-empty folder", async () => {
     const response = await app.handle(
       new Request(`http://localhost/api/v1/folders/${folderId}`, {
         method: "DELETE",
       }),
     );
 
-    expect(response.status).toBe(409);
-    expect(await response.json()).toEqual({
-      message: "Folder must be empty before deletion",
-    });
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
   });
 
   it("deletes an empty folder", async () => {
