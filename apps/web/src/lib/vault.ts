@@ -4,11 +4,16 @@ import type { FolderMetadata } from "../components/FolderView/hooks";
 import { responseErrorMessage } from "../utils/error-message";
 import { api } from "./api";
 
+type VaultBreadcrumb = { id: string; name: string };
+type VaultFolderMetadata = FolderMetadata & {
+  counts: { files: number; folders: number };
+};
+
 export type VaultLoaderData = {
-  breadcrumbs: FolderMetadata[];
+  breadcrumbs: VaultBreadcrumb[];
   currentFolder: FolderMetadata | null;
   files: FileMetadata[];
-  folders: FolderMetadata[];
+  folders: VaultFolderMetadata[];
 };
 
 export class VaultLoadError extends Error {
@@ -21,12 +26,83 @@ export class VaultLoadError extends Error {
   }
 }
 
-async function retrieveFolder(folderId: string, signal: AbortSignal) {
-  const response = await api.v1.folders({ id: folderId }).get({
+function mapVaultData(
+  data:
+    | Awaited<ReturnType<typeof api.v1.vault.get>>["data"]
+    | Awaited<
+        ReturnType<ReturnType<typeof api.v1.vault.folders>["get"]>
+      >["data"],
+  parentFolderId: string | null,
+): VaultLoaderData {
+  if (!data) {
+    throw new VaultLoadError("The vault response did not contain data.", 500);
+  }
+
+  const folders: VaultFolderMetadata[] = [];
+  const files: FileMetadata[] = [];
+
+  for (const entry of data.entries) {
+    if (entry.kind === "folder") {
+      folders.push({
+        counts: entry.counts,
+        createdAt: entry.createdAt,
+        id: entry.id,
+        name: entry.name,
+        parentFolderId,
+        updatedAt: entry.updatedAt,
+      });
+    } else {
+      files.push({
+        createdAt: entry.createdAt,
+        id: entry.id,
+        name: entry.name,
+        size: entry.size,
+        status: entry.status,
+        type: entry.type,
+        updatedAt: entry.updatedAt,
+      });
+    }
+  }
+
+  const currentFolder =
+    data.location.kind === "folder"
+      ? {
+          createdAt: data.location.createdAt,
+          id: data.location.id,
+          name: data.location.name,
+          parentFolderId: data.location.parentFolderId,
+          updatedAt: data.location.updatedAt,
+        }
+      : null;
+
+  return {
+    breadcrumbs: data.breadcrumbs,
+    currentFolder,
+    files,
+    folders,
+  };
+}
+
+async function loadRootVault(signal: AbortSignal) {
+  const response = await api.v1.vault.get({ fetch: { signal } });
+
+  if (response.error === null) return mapVaultData(response.data, null);
+
+  throw new VaultLoadError(
+    responseErrorMessage(
+      response.error,
+      `Could not load the vault (${response.status}).`,
+    ),
+    response.status,
+  );
+}
+
+async function loadFolderVault(folderId: string, signal: AbortSignal) {
+  const response = await api.v1.vault.folders({ id: folderId }).get({
     fetch: { signal },
   });
 
-  if (response.error === null) return response.data;
+  if (response.error === null) return mapVaultData(response.data, folderId);
   if (response.status === 404) throw notFound({ data: { folderId } });
 
   throw new VaultLoadError(
@@ -38,81 +114,11 @@ async function retrieveFolder(folderId: string, signal: AbortSignal) {
   );
 }
 
-async function loadBreadcrumbs(folderId: string, signal: AbortSignal) {
-  const breadcrumbs: FolderMetadata[] = [];
-  const visitedFolderIds = new Set<string>();
-  let nextFolderId: string | null = folderId;
-
-  while (nextFolderId) {
-    if (visitedFolderIds.has(nextFolderId)) {
-      throw new VaultLoadError("The folder hierarchy contains a cycle.", 409);
-    }
-
-    visitedFolderIds.add(nextFolderId);
-    const folder = await retrieveFolder(nextFolderId, signal);
-    breadcrumbs.unshift(folder);
-    nextFolderId = folder.parentFolderId;
-  }
-
-  return breadcrumbs;
-}
-
-async function listFolders(parentFolderId: string | null, signal: AbortSignal) {
-  const response = await api.v1.folders.get({
-    fetch: { signal },
-    query: parentFolderId ? { parentFolderId } : {},
-  });
-
-  if (response.error === null) return response.data;
-  if (response.status === 404 && parentFolderId) {
-    throw notFound({ data: { folderId: parentFolderId } });
-  }
-
-  throw new VaultLoadError(
-    responseErrorMessage(
-      response.error,
-      `Could not load folders (${response.status}).`,
-    ),
-    response.status,
-  );
-}
-
-async function listRootFiles(signal: AbortSignal) {
-  const response = await api.v1.uploads.get({ fetch: { signal } });
-
-  if (response.error === null) return response.data;
-
-  throw new VaultLoadError(
-    responseErrorMessage(
-      response.error,
-      `Could not load files (${response.status}).`,
-    ),
-    response.status,
-  );
-}
-
-export async function loadVaultContents(
+export function loadVaultContents(
   folderId: string | null,
   signal: AbortSignal,
 ): Promise<VaultLoaderData> {
-  if (folderId === null) {
-    const [folders, files] = await Promise.all([
-      listFolders(null, signal),
-      listRootFiles(signal),
-    ]);
-
-    return { breadcrumbs: [], currentFolder: null, files, folders };
-  }
-
-  const [breadcrumbs, folders] = await Promise.all([
-    loadBreadcrumbs(folderId, signal),
-    listFolders(folderId, signal),
-  ]);
-
-  return {
-    breadcrumbs,
-    currentFolder: breadcrumbs.at(-1)!,
-    files: [],
-    folders,
-  };
+  return folderId === null
+    ? loadRootVault(signal)
+    : loadFolderVault(folderId, signal);
 }

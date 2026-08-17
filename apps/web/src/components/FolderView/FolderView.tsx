@@ -21,8 +21,14 @@ function formatUpdated(value: string) {
   return Number.isNaN(date.getTime()) ? "—" : updatedFormatter.format(date);
 }
 
-function toFolderEntry(folder: FolderMetadata): FolderViewFolder {
+function toFolderEntry(
+  folder: FolderMetadata & {
+    counts?: { files: number; folders: number };
+  },
+): FolderViewFolder {
   return {
+    fileCount: folder.counts?.files,
+    folderCount: folder.counts?.folders,
     id: folder.id,
     kind: "folder",
     name: folder.name,
@@ -68,7 +74,7 @@ export function FolderView({ data }: FolderViewProps) {
         name: file.name,
         size: formatFileSize(file.size),
         type: file.type,
-        updated: formatUpdated(file.createdAt),
+        updated: formatUpdated(file.updatedAt ?? file.createdAt),
       })),
     [data.files],
   );

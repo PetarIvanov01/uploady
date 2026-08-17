@@ -1,5 +1,4 @@
 import { notFound } from "@tanstack/react-router";
-import type { FileMetadata } from "../components/FileList";
 import { responseErrorMessage } from "../utils/error-message";
 import { api } from "./api";
 
@@ -13,14 +12,11 @@ export class FileLoadError extends Error {
   }
 }
 
-export async function getFile(
-  fileId: string,
-  signal?: AbortSignal,
-): Promise<FileMetadata> {
+export async function getFile(fileId: string, signal?: AbortSignal) {
   let response;
 
   try {
-    response = await api.v1.uploads({ id: fileId }).get({
+    response = await api.v1.vault.files({ id: fileId }).get({
       fetch: { signal },
     });
   } catch (error) {

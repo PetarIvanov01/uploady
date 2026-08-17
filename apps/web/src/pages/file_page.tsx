@@ -12,16 +12,26 @@ import { formatFileSize } from "../utils/file-size";
 const fileRoute = getRouteApi("/file/$fileId");
 
 export function FilePage() {
-  const file = fileRoute.useLoaderData();
+  const { file } = fileRoute.useLoaderData();
 
   return (
     <section className="mx-auto w-full max-w-4xl pt-5 sm:pt-7">
-      <Link
-        className="inline-flex min-h-11 items-center text-xs text-muted transition-colors hover:text-ink"
-        to="/"
-      >
-        ← Back to root
-      </Link>
+      {file.parentFolderId ? (
+        <Link
+          className="inline-flex min-h-11 items-center text-xs text-muted transition-colors hover:text-ink"
+          params={{ folderId: file.parentFolderId }}
+          to="/folder/$folderId"
+        >
+          ← Back to folder
+        </Link>
+      ) : (
+        <Link
+          className="inline-flex min-h-11 items-center text-xs text-muted transition-colors hover:text-ink"
+          to="/"
+        >
+          ← Back to root
+        </Link>
+      )}
 
       <div className="mt-4 border-y border-border py-5 sm:py-7">
         <div className="flex min-w-0 items-start gap-3 sm:gap-4">

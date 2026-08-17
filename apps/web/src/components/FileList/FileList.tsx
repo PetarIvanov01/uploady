@@ -1,7 +1,7 @@
 import { formatFileSize } from "../../utils/file-size";
 import { Button } from "../Button";
 import { FileTypeIcon, MoreIcon } from "../VaultIcons";
-import { isFolder, type FileMetadata } from "./useFileList";
+import { isFolder, type FileMetadata } from "./file.types";
 
 function formatDate(value: string) {
   const date = new Date(value);
