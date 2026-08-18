@@ -11,17 +11,19 @@ export function RootLayout() {
         >
           <Link
             aria-label="Uplody home"
-            className="inline-flex size-11 items-center justify-center rounded-xl transition-transform duration-200 hover:scale-105"
+            className="group inline-flex min-h-11 items-center gap-3 rounded-xl"
             to="/"
           >
             <img
               alt=""
-              className="size-10 rounded-[0.65rem]"
+              className="size-10 rounded-[0.65rem] transition-transform duration-200 group-hover:scale-105"
               height="40"
               src={logoUrl}
               width="40"
             />
-            <span className="sr-only">Uplody</span>
+            <span className="text-[1.5rem] tracking-[0.04em] text-ink sm:text-[1.625rem]">
+              Uplody
+            </span>
           </Link>
           <button
             aria-label="Open navigation menu"

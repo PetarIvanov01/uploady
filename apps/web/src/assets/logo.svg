@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
-  <rect x="0" y="0" width="1024" height="1024" rx="170" fill="#15191E"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="170" fill="#F7F7F5"/>
 
   <!-- Folder outline -->
   <path d="M250 355
@@ -13,18 +13,18 @@
            L453 294
            H320
            C281 294 250 325 250 355Z"
-        stroke="#F3F1EB"
+        stroke="#171717"
         stroke-width="26"
         stroke-linecap="round"
         stroke-linejoin="round"/>
 
   <!-- Folder top divider -->
   <line x1="250" y1="387" x2="774" y2="387"
-        stroke="#F3F1EB" stroke-width="26" stroke-linecap="round"/>
+        stroke="#171717" stroke-width="26" stroke-linecap="round"/>
 
   <!-- V mark -->
   <path d="M420 500 L512 690 L604 500"
-        stroke="#F3F1EB"
+        stroke="#171717"
         stroke-width="32"
         stroke-linecap="round"
         stroke-linejoin="round"/>
