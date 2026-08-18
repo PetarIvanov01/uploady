@@ -48,8 +48,9 @@ development.
 | `/folder/$folderId` | `src/routes/folder/$folderId.tsx` | Loads `GET /api/v1/vault/folders/:id`; renders breadcrumbs and direct contents.  |
 | `/file/$fileId`     | `src/routes/file/$fileId.tsx`     | Loads `GET /api/v1/vault/files/:id`; renders its folder breadcrumb and metadata. |
 
-All routes share `RootLayout`, which provides the Uplody header and `<Outlet>`.
-The header hamburger button is visual only and has no menu behavior.
+All routes share `RootLayout`, which provides a linked Uplody logo in the header
+and `<Outlet>`. The header hamburger button is visual only and has no menu
+behavior. The HTML shell defines the product title and description metadata.
 
 Vault and file routes have pending, error, and not-found components. Loader
 data is fresh for 10 seconds (`staleTime: 10_000`). Mutations call
@@ -173,6 +174,8 @@ apps/web/
 │   ├── main.tsx                    router creation, registration, React root
 │   ├── routeTree.gen.ts            generated; never edit manually
 │   ├── index.css                   Tailwind import, tokens, global base styles
+│   ├── assets/
+│   │   └── logo.svg                Vite-bundled in-app header logo
 │   ├── routes/
 │   │   ├── __root.tsx              RootLayout binding
 │   │   ├── index.tsx               root vault loader/page

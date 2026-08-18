@@ -1,4 +1,5 @@
 import { Link, Outlet } from "@tanstack/react-router";
+import logoUrl from "../assets/logo.svg";
 
 export function RootLayout() {
   return (
@@ -9,10 +10,18 @@ export function RootLayout() {
           aria-label="Primary navigation"
         >
           <Link
-            className="inline-flex min-h-11 items-center text-[1.5rem] tracking-[0.04em] text-ink sm:text-[1.625rem]"
+            aria-label="Uplody home"
+            className="inline-flex size-11 items-center justify-center rounded-xl transition-transform duration-200 hover:scale-105"
             to="/"
           >
-            Uplody
+            <img
+              alt=""
+              className="size-10 rounded-[0.65rem]"
+              height="40"
+              src={logoUrl}
+              width="40"
+            />
+            <span className="sr-only">Uplody</span>
           </Link>
           <button
             aria-label="Open navigation menu"
