@@ -6,49 +6,43 @@ import {
   S3ServiceException,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { env } from "./env";
 
-const endpoint = process.env.S3_ENDPOINT_URL?.trim();
-const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
-const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
-const bucketName = process.env.S3_BUCKET_NAME?.trim();
+const endpoint = env.S3_ENDPOINT_URL;
+const publicEndpoint = env.S3_PUBLIC_ENDPOINT_URL;
+const accessKeyId = env.S3_ACCESS_KEY_ID;
+const secretAccessKey = env.S3_SECRET_ACCESS_KEY;
+const bucketName = env.S3_BUCKET_NAME;
+const forcePathStyle = env.S3_FORCE_PATH_STYLE;
 
-if (!endpoint || !accessKeyId || !secretAccessKey || !bucketName) {
-  const missingVariables = [
-    ["S3_ENDPOINT_URL", endpoint],
-    ["S3_ACCESS_KEY_ID", accessKeyId],
-    ["S3_SECRET_ACCESS_KEY", secretAccessKey],
-    ["S3_BUCKET_NAME", bucketName],
-  ]
-    .filter(([, value]) => !value)
-    .map(([name]) => name);
-
-  throw new Error(
-    `Missing required S3 environment variables: ${missingVariables.join(", ")}`,
-  );
-}
+const createS3Client = (clientEndpoint: string) =>
+  new S3Client({
+    endpoint: clientEndpoint,
+    region: "auto",
+    forcePathStyle,
+    credentials: {
+      accessKeyId,
+      secretAccessKey,
+    },
+  });
 
 export const PRESIGNED_UPLOAD_EXPIRES_IN_SECONDS = 5 * 60;
 
-export const s3 = new S3Client({
-  endpoint,
-  region: "auto",
-  credentials: {
-    accessKeyId,
-    secretAccessKey,
-  },
-});
+export const s3 = createS3Client(endpoint);
+
+const presigningS3 = publicEndpoint ? createS3Client(publicEndpoint) : s3;
 
 /** @knipignore Reserved for the file-download endpoint. */
 export const getUrl = async (objectKey: string) =>
   getSignedUrl(
-    s3,
+    presigningS3,
     new GetObjectCommand({ Bucket: bucketName, Key: objectKey }),
     { expiresIn: 60 * 60 },
   );
 
 export const putUrl = async (objectKey: string, contentType: string) =>
   getSignedUrl(
-    s3,
+    presigningS3,
     new PutObjectCommand({
       Bucket: bucketName,
       Key: objectKey,

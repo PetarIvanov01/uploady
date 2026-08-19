@@ -150,7 +150,9 @@ The active upload state machine is implemented in `useFileUpload`:
 
 The `Content-Type` header returned by the backend must be sent exactly to the
 presigned URL. The S3/R2 bucket requires browser CORS for the web origin, `PUT`,
-and `Content-Type`.
+and `Content-Type`. Local RustFS is bootstrapped with this rule for
+`http://localhost:5173`; changing the web origin requires setting
+`RUSTFS_CORS_ALLOWED_ORIGIN` and rerunning `npm run storage:up`.
 
 Each non-uploading phase is shown for at least 350 ms to avoid UI flicker. The
 checksum implementation duplicates up to 200 MiB into browser memory, which is
@@ -234,15 +236,20 @@ apps/web/
 
 ## Local development and commands
 
-Start the API and web independently from the repository root:
+Start local PostgreSQL and RustFS, then run the API and web independently from
+the repository root:
 
 ```bash
+docker compose up --detach --wait postgres
+npm run storage:up
+npm run db:migrate
 npm run dev:api
 npm run dev:web
 ```
 
 The web app defaults to Vite's `http://localhost:5173`; the proxy expects the
-API at `http://localhost:3000`.
+API at `http://localhost:3000`. Local presigned uploads target RustFS at
+`http://localhost:9000`; its console is at `http://localhost:9001`.
 
 Useful commands:
 
