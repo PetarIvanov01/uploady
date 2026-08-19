@@ -5,9 +5,10 @@ import { uploads } from "./routes/uploads";
 import "./s3";
 import { folders } from "./routes/folders";
 import { vault } from "./routes/vault";
+import { env } from "./env";
 
 const frontendOrigin =
-  process.env.NODE_ENV === "production" ? "" : "http://localhost:5173";
+  env.NODE_ENV === "production" ? "" : "http://localhost:5173";
 
 export const app = new Elysia({ prefix: "/api/v1" })
   .use(

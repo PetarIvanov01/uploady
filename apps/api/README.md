@@ -190,8 +190,10 @@ apps/api/
 │   └── performance.sql         repeatable local folder/file performance seed
 ├── src/
 │   ├── app.ts                  Elysia composition, /api/v1 prefix, CORS, App type
+│   ├── env.schema.ts           Elysia t schema, normalization, typed env parser
+│   ├── env.ts                  fail-fast validated API environment singleton
 │   ├── index.ts                Bun listener on PORT (default 3000)
-│   ├── s3.ts                   env validation, S3 client, presigned GET/PUT, HEAD
+│   ├── s3.ts                   internal/public S3 clients, presigned GET/PUT, HEAD
 │   ├── database/
 │   │   ├── index.ts            postgres-js client and Drizzle instance
 │   │   └── schema.ts           tables, enums, references, cascade semantics
@@ -210,8 +212,13 @@ apps/api/
 │       ├── multipart-upload.ts multipart contracts; deliberately unimplemented
 │       ├── folders.ts          name normalization, ownership, cycle validation
 │       └── vault.ts            read-model mapping and hierarchy assertions
-├── test/app.test.ts            Bun request-level tests with mocked repos/S3
-├── Dockerfile                  migration target + compiled distroless API image
+├── scripts/
+│   └── init-object-storage.mjs idempotent local bucket and CORS bootstrap
+├── test/
+│   ├── app.test.ts             Bun request-level tests with mocked repos/S3
+│   ├── env.test.ts             API environment parsing and safe errors
+│   └── storage.integration.ts  opt-in live S3 storage contract
+├── Dockerfile                  migration/init/test targets + distroless API image
 ├── drizzle.config.ts           Drizzle Kit config; requires DATABASE_URL
 └── package.json                workspace scripts and dependencies
 ```
@@ -229,23 +236,45 @@ Create `apps/api/.env` from `apps/api/.env.example` and supply:
 PORT=3000
 DATABASE_URL=postgresql://uploady:uploady@localhost:5432/uploady
 S3_ENDPOINT_URL=...
+S3_PUBLIC_ENDPOINT_URL=...
+S3_FORCE_PATH_STYLE=...
 S3_ACCESS_KEY_ID=...
 S3_SECRET_ACCESS_KEY=...
 S3_BUCKET_NAME=...
 ```
 
-`R2_S3_TOKEN_VALUE` remains in the example but is not read by the AWS SDK
-client. `DATABASE_URL` is required when the database module loads. Every S3
-variable is required when `s3.ts` loads, so the server fails fast even when an
-upload route is never called. Do not log credentials.
+At module startup, `env.ts` passes an explicit selection of API variables to the
+Elysia `t` schema in `env.schema.ts`. Invalid configuration throws one error
+listing all failing variable paths before the server listens. Values are
+trimmed, empty optional values become undefined, `PORT` and
+`S3_FORCE_PATH_STYLE` decode to number and boolean values, and errors never
+include credential values. Runtime modules import the typed `env` singleton;
+`env.ts` is the only `process.env` access under `src/`.
+
+`PORT` defaults to `3000`, `NODE_ENV` to `development`, and
+`S3_FORCE_PATH_STYLE` to `false`. `PORT` must be an integer from 1 through
+65,535; `NODE_ENV` accepts only `development`, `test`, or `production`; database
+and S3 endpoints must be URIs; and required strings must be non-empty.
+
+`S3_PUBLIC_ENDPOINT_URL` is optional. When supplied, presigned GET/PUT URLs use
+it while server-side operations continue to use `S3_ENDPOINT_URL`; this lets a
+containerized API use `http://rustfs:9000` internally and return
+`http://localhost:9000` URLs to the host browser. `S3_FORCE_PATH_STYLE` is an
+optional strict `true`/`false` value and is enabled for local RustFS.
+
+Drizzle Kit and the object-storage initializer are separate processes and
+validate only their own required variables; running a database migration does
+not require S3 configuration. Do not log credentials.
 
 For browser uploads, the S3/R2 bucket must allow CORS from the web origin for
-`PUT` and the `Content-Type` header.
+`PUT` and the `Content-Type` header. The local `rustfs-init` service creates the
+development bucket and applies this rule idempotently.
 
 From the repository root:
 
 ```bash
 docker compose up --detach --wait postgres
+npm run storage:up
 npm run db:migrate
 npm run dev:api
 ```
@@ -256,9 +285,12 @@ Or run the containerized local stack:
 npm run docker:up
 ```
 
-Compose starts PostgreSQL, runs the dedicated `migration` image target to
-completion, then starts the API. The production image itself does not migrate
-on entry; migration is a separate deployment concern.
+Compose starts PostgreSQL and pinned RustFS, runs the dedicated `migration` and
+`rustfs-init` image targets to completion, then starts the API. RustFS persists
+objects in the `rustfs_data` volume and exposes its S3 API at
+`http://localhost:9000` and console at `http://localhost:9001`. These ports bind
+only to `127.0.0.1`. The production API image itself performs neither database
+migration nor bucket initialization on entry.
 
 ## Commands and change workflow
 
@@ -268,6 +300,8 @@ Run from the repository root unless noted:
 npm run dev:api
 npm run build --workspace @uploady/api
 npm run test --workspace @uploady/api
+npm run test:storage
+npm run storage:up
 npm run check
 npm run dead-code
 npm run dead-code:files
@@ -305,13 +339,24 @@ multipart `501`, root/folder/file vault reads and `404`s, folder creation,
 moving, cycle rejection, and successful delete responses for both empty and
 non-empty folders. It also verifies that request-body constraints and UUID path
 parameter validation still return `422` before handlers process invalid input.
+`test/env.test.ts` covers runtime defaults, trimming empty optional values,
+numeric/boolean decoding, aggregated invalid-variable reporting, and secret
+redaction.
 
-The test file mocks S3 and all repositories before importing `app`. Therefore:
+The request test file mocks S3 and all repositories before importing `app`.
+Therefore:
 
 - tests do not require or validate a live PostgreSQL instance;
-- tests do not send data to S3/R2;
-- raw SQL, migration behavior, presigned URL correctness, and bucket CORS need
-  separate integration/manual verification.
+- regular tests do not send data to S3/R2;
+- raw SQL and migration behavior still need separate integration/manual
+  verification.
+
+`test/storage.integration.ts` is an opt-in Docker-backed contract run by
+`npm run test:storage`. It starts/reuses RustFS, bootstraps the bucket and CORS,
+then verifies a browser-style CORS preflight, path-style presigned PUT, object
+metadata through HEAD, missing-object behavior, and scoped cleanup. It does not
+exercise PostgreSQL or the complete HTTP upload orchestration. Keep it separate
+from the fast default test suite.
 
 ## Known gaps and next likely work
 
@@ -341,5 +386,7 @@ The test file mocks S3 and all repositories before importing `app`. Therefore:
   has a documented runtime output-validation or serialization requirement.
 - Keep Elysia schemas for untrusted request bodies, parameters, queries,
   headers, and cookies.
+- Keep API runtime environment access centralized in `env.ts`; extend and test
+  `env.schema.ts` when adding a required or optional runtime variable.
 - Do not claim multipart, download, nested upload, or authentication support
   until the corresponding behavior and tests exist.

@@ -23,7 +23,9 @@
     "lint:fix": "oxlint . --fix",
     "format": "turbo run format",
     "prepare": "husky",
-    "test": "turbo run test"
+    "storage:up": "node ./scripts/storage-up.mjs",
+    "test": "turbo run test",
+    "test:storage": "docker compose run --build --rm storage-test"
   },
   "devDependencies": {
     "husky": "^9.1.7",

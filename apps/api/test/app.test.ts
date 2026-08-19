@@ -5,6 +5,18 @@ import type {
 } from "../src/repositories/folder.repository";
 import type { CreateSingleUploadSessionInput } from "../src/repositories/file.repository";
 
+Object.assign(process.env, {
+  DATABASE_URL: "postgresql://uploady:uploady@localhost:5432/uploady-test",
+  NODE_ENV: "test",
+  PORT: "3000",
+  S3_ACCESS_KEY_ID: "test-access-key",
+  S3_BUCKET_NAME: "uploady-test",
+  S3_ENDPOINT_URL: "http://localhost:9000",
+  S3_FORCE_PATH_STYLE: "true",
+  S3_PUBLIC_ENDPOINT_URL: "",
+  S3_SECRET_ACCESS_KEY: "test-secret-key",
+});
+
 const singleUploadLimitBytes = 200 * 1024 * 1024;
 
 const fileId = "f0a6d1d4-1ef7-48df-9d8f-e13b2aa68bc1";

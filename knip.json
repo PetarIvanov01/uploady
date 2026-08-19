@@ -5,7 +5,7 @@
   "workspaces": {
     "apps/api": {
       "drizzle": false,
-      "entry": ["drizzle.config.ts"]
+      "entry": ["drizzle.config.ts", "scripts/init-object-storage.mjs"]
     }
   }
 }

@@ -8,12 +8,20 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      rustfs-init:
+        condition: service_completed_successfully
     env_file:
       - ./apps/api/.env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-uploady}:${POSTGRES_PASSWORD:-uploady}@postgres:5432/${POSTGRES_DB:-uploady}
       NODE_ENV: production
       PORT: 3000
+      S3_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-uploady-local}
+      S3_BUCKET_NAME: ${RUSTFS_BUCKET:-uploady-dev}
+      S3_ENDPOINT_URL: http://rustfs:9000
+      S3_FORCE_PATH_STYLE: "true"
+      S3_PUBLIC_ENDPOINT_URL: http://localhost:${RUSTFS_PORT:-9000}
+      S3_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-uploady-local-secret-change-me}
     ports:
       - "${API_PORT:-3000}:3000"
 
@@ -46,5 +54,64 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql
 
+  rustfs:
+    image: rustfs/rustfs:1.0.0-beta.12
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ACCESS_KEY:-uploady-local}
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_OBS_LOGGER_LEVEL: error
+      RUSTFS_SECRET_KEY: ${RUSTFS_SECRET_KEY:-uploady-local-secret-change-me}
+      RUSTFS_VOLUMES: /data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail http://127.0.0.1:9000/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+    ports:
+      - "127.0.0.1:${RUSTFS_PORT:-9000}:9000"
+      - "127.0.0.1:${RUSTFS_CONSOLE_PORT:-9001}:9001"
+    restart: unless-stopped
+    volumes:
+      - rustfs_data:/data
+
+  rustfs-init:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: object-storage-init
+    depends_on:
+      rustfs:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-uploady-local}
+      S3_BUCKET_NAME: ${RUSTFS_BUCKET:-uploady-dev}
+      S3_CORS_ALLOWED_ORIGIN: ${RUSTFS_CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      S3_ENDPOINT_URL: http://rustfs:9000
+      S3_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-uploady-local-secret-change-me}
+    restart: "no"
+
+  storage-test:
+    profiles:
+      - test
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: storage-test
+    depends_on:
+      rustfs-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://storage-test:storage-test@unused:5432/storage-test
+      S3_ACCESS_KEY_ID: ${RUSTFS_ACCESS_KEY:-uploady-local}
+      S3_BUCKET_NAME: ${RUSTFS_BUCKET:-uploady-dev}
+      S3_CORS_ALLOWED_ORIGIN: ${RUSTFS_CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      S3_ENDPOINT_URL: http://rustfs:9000
+      S3_FORCE_PATH_STYLE: "true"
+      S3_SECRET_ACCESS_KEY: ${RUSTFS_SECRET_KEY:-uploady-local-secret-change-me}
+
 volumes:
   postgres_data:
+  rustfs_data:

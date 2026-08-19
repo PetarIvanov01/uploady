@@ -24,6 +24,24 @@ WORKDIR /app/apps/api
 
 ENTRYPOINT ["npm", "run", "db:migrate"]
 
+FROM dependencies AS object-storage-init
+
+COPY apps/api/scripts ./apps/api/scripts
+
+WORKDIR /app/apps/api
+
+ENTRYPOINT ["node", "./scripts/init-object-storage.mjs"]
+
+FROM oven/bun:1.3.14 AS storage-test
+
+WORKDIR /app
+
+COPY --from=migration /app/node_modules ./node_modules
+COPY apps/api/src ./apps/api/src
+COPY apps/api/test/storage.integration.ts ./apps/api/test/storage.integration.ts
+
+ENTRYPOINT ["bun", "test", "./apps/api/test/storage.integration.ts"]
+
 FROM oven/bun:1.3.14 AS build
 
 WORKDIR /app
