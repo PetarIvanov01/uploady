@@ -20,7 +20,6 @@ import {
   SingleUploadTooLargeError,
 } from "../services/upload-file";
 
-const errorMessageSchema = t.Object({ message: t.String() });
 const uploadIdParamsSchema = t.Object({
   uploadSessionId: t.String({ format: "uuid" }),
 });
@@ -50,21 +49,6 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     },
     {
       body: singleUploadBodySchema,
-      response: {
-        201: t.Object({
-          expiresAt: t.String(),
-          fileId: t.String({ format: "uuid" }),
-          headers: t.Object({ "content-type": t.String() }),
-          method: t.Literal("PUT"),
-          mode: t.Literal("SINGLE"),
-          uploadSessionId: t.String({ format: "uuid" }),
-          uploadUrl: t.String(),
-        }),
-        413: t.Object({
-          maxSizeBytes: t.Integer(),
-          message: t.String(),
-        }),
-      },
     },
   )
   .post(
@@ -92,15 +76,6 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     {
       body: completeSingleUploadBodySchema,
       params: t.Object({ fileId: t.String({ format: "uuid" }) }),
-      response: {
-        200: t.Object({
-          fileId: t.String({ format: "uuid" }),
-          status: t.Literal("COMPLETED"),
-          uploadSessionId: t.String({ format: "uuid" }),
-        }),
-        404: errorMessageSchema,
-        409: errorMessageSchema,
-      },
     },
   )
   .post(
@@ -116,17 +91,6 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     },
     {
       body: multipartUploadBodySchema,
-      response: {
-        201: t.Object({
-          expectedParts: t.Integer(),
-          expiresAt: t.String(),
-          fileId: t.String({ format: "uuid" }),
-          mode: t.Literal("MULTIPART"),
-          partSizeBytes: t.Integer(),
-          uploadSessionId: t.String({ format: "uuid" }),
-        }),
-        501: errorMessageSchema,
-      },
     },
   )
   .post(
@@ -142,15 +106,6 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     },
     {
       params: multipartPartParamsSchema,
-      response: {
-        200: t.Object({
-          expiresAt: t.String(),
-          method: t.Literal("PUT"),
-          partNumber: t.Integer(),
-          uploadUrl: t.String(),
-        }),
-        501: errorMessageSchema,
-      },
     },
   )
   .post(
@@ -167,14 +122,6 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     {
       body: completeMultipartUploadBodySchema,
       params: uploadIdParamsSchema,
-      response: {
-        200: t.Object({
-          fileId: t.String({ format: "uuid" }),
-          status: t.Literal("COMPLETED"),
-          uploadSessionId: t.String({ format: "uuid" }),
-        }),
-        501: errorMessageSchema,
-      },
     },
   )
   .delete(
@@ -191,6 +138,5 @@ export const uploads = new Elysia({ prefix: "/uploads" })
     },
     {
       params: uploadIdParamsSchema,
-      response: { 204: t.Void(), 501: errorMessageSchema },
     },
   );

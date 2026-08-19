@@ -7,19 +7,9 @@ import {
   updateFolderBodySchema,
 } from "../services/folders";
 
-const folderSchema = t.Object({
-  createdAt: t.String(),
-  id: t.String({ format: "uuid" }),
-  name: t.String(),
-  parentFolderId: t.Nullable(t.String({ format: "uuid" })),
-  updatedAt: t.String(),
-});
-
 const folderIdParamsSchema = t.Object({
   id: t.String({ format: "uuid" }),
 });
-
-const errorMessageSchema = t.Object({ message: t.String() });
 
 export const folders = new Elysia({ prefix: "/folders" })
   .post(
@@ -41,12 +31,6 @@ export const folders = new Elysia({ prefix: "/folders" })
     },
     {
       body: createFolderBodySchema,
-      response: {
-        201: folderSchema,
-        400: errorMessageSchema,
-        404: errorMessageSchema,
-        409: errorMessageSchema,
-      },
     },
   )
   .patch(
@@ -72,12 +56,6 @@ export const folders = new Elysia({ prefix: "/folders" })
     {
       body: updateFolderBodySchema,
       params: folderIdParamsSchema,
-      response: {
-        200: folderSchema,
-        400: errorMessageSchema,
-        404: errorMessageSchema,
-        409: errorMessageSchema,
-      },
     },
   )
   .delete(
@@ -97,10 +75,5 @@ export const folders = new Elysia({ prefix: "/folders" })
     },
     {
       params: folderIdParamsSchema,
-      response: {
-        204: t.Void(),
-        404: errorMessageSchema,
-        500: errorMessageSchema,
-      },
     },
   );

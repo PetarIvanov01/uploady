@@ -74,8 +74,10 @@ export const api = _api.api;
 ```
 
 The `App` type comes from the workspace package `@uploady/api`, whose export
-points at backend `src/app.ts`. Backend route schemas therefore control frontend
-request and response types.
+points at backend `src/app.ts`. Backend request schemas control frontend input
+types, while typed service/application return values flow through Elysia
+handlers into Eden response types. Response schemas are not duplicated solely
+for Eden typing.
 
 - In normal development, no `VITE_API_URL` is needed; same-origin `/api` calls
   go through Vite's port-3000 proxy.

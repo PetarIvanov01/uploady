@@ -201,9 +201,9 @@ apps/api/
 │   │   └── vault-read.repository.ts combined entries and recursive paths
 │   ├── routes/
 │   │   ├── health.ts           health route
-│   │   ├── uploads.ts          upload HTTP schemas/status mapping
-│   │   ├── folders.ts          folder mutation HTTP schemas/status mapping
-│   │   └── vault.ts            vault read HTTP schemas/status mapping
+│   │   ├── uploads.ts          upload request schemas/status mapping
+│   │   ├── folders.ts          folder request schemas/status mapping
+│   │   └── vault.ts            vault request schemas/status mapping
 │   └── services/
 │       ├── upload-file.ts      single-upload initialization and 200 MiB limit
 │       ├── complete-upload.ts  storage verification and finalization
@@ -303,7 +303,8 @@ object keys intentionally point to nonexistent fake storage data.
 covers health, single upload initialization/size rejection/completion,
 multipart `501`, root/folder/file vault reads and `404`s, folder creation,
 moving, cycle rejection, and successful delete responses for both empty and
-non-empty folders.
+non-empty folders. It also verifies that request-body constraints and UUID path
+parameter validation still return `422` before handlers process invalid input.
 
 The test file mocks S3 and all repositories before importing `app`. Therefore:
 
@@ -334,7 +335,11 @@ The test file mocks S3 and all repositories before importing `app`. Therefore:
   the combined read model (`/vault`) unless deliberately redesigning the API.
 - Do not mark a file READY before storage verification succeeds.
 - Keep DB state transitions transactional where multiple tables change.
-- Update the exported Elysia response schemas when behavior changes; the web
-  app derives its Eden client types from `App`.
+- Keep application/service DTOs and explicit return types as the source of
+  truth for responses. Elysia infers those handler return types into `App` for
+  Eden Treaty; do not duplicate them with response schemas unless an endpoint
+  has a documented runtime output-validation or serialization requirement.
+- Keep Elysia schemas for untrusted request bodies, parameters, queries,
+  headers, and cookies.
 - Do not claim multipart, download, nested upload, or authentication support
   until the corresponding behavior and tests exist.

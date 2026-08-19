@@ -47,8 +47,10 @@ redesign and the user approves it.
 For the Bun/Elysia API:
 
 - Compose typed Elysia route plugins under the existing `/api/v1` application.
-- Define request, parameter, and response schemas with Elysia `t` and keep the
-  exported `App` contract compatible with Eden Treaty.
+- Define schemas for untrusted request data with Elysia `t`. Keep response
+  contracts TypeScript/DTO-first and let typed handler returns flow into the
+  exported `App` contract for Eden Treaty; add response schemas only for a
+  documented runtime output-validation or serialization requirement.
 - Keep HTTP parsing and status mapping in `routes/`, business rules and state
   transitions in `services/`, and database access in `repositories/`.
 - Use Drizzle transactions for related multi-table writes and preserve user

@@ -209,6 +209,23 @@ describe("API", () => {
     });
   });
 
+  it("validates untrusted single-upload request bodies", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/uploads/single", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          checksum: "sha256:test",
+          name: "empty.bin",
+          size: 0,
+          type: "application/octet-stream",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(422);
+  });
+
   it("completes a single upload after storage verification", async () => {
     const response = await app.handle(
       new Request(`http://localhost/api/v1/uploads/single/${fileId}/complete`, {
@@ -310,6 +327,14 @@ describe("API", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ message: "Folder not found" });
+  });
+
+  it("validates untrusted vault path parameters", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/vault/folders/not-a-uuid"),
+    );
+
+    expect(response.status).toBe(422);
   });
 
   it("retrieves the file vault read model", async () => {
