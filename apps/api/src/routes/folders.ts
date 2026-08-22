@@ -1,11 +1,13 @@
 import { Elysia, t } from "elysia";
 import {
   createFolder,
-  createFolderBodySchema,
   deleteFolder,
   updateFolder,
+} from "../services/folders/folders.service";
+import {
+  createFolderBodySchema,
   updateFolderBodySchema,
-} from "../services/folders";
+} from "./folders.schemas";
 
 const folderIdParamsSchema = t.Object({
   id: t.String({ format: "uuid" }),

@@ -1,64 +1,15 @@
-import { t, type UnwrapSchema } from "elysia";
-import {
-  folderRepository,
-  type FolderRecord,
-} from "../repositories/folder.repository";
-
-export const folderNameSchema = t.String({ maxLength: 255, minLength: 1 });
-
-export const createFolderBodySchema = t.Object({
-  name: folderNameSchema,
-  parentFolderId: t.Optional(t.Nullable(t.String({ format: "uuid" }))),
-});
-
-export const updateFolderBodySchema = t.Partial(
-  t.Object({
-    name: folderNameSchema,
-    parentFolderId: t.Nullable(t.String({ format: "uuid" })),
-  }),
-  { minProperties: 1 },
-);
-
-export type CreateFolderInput = UnwrapSchema<typeof createFolderBodySchema>;
-export type UpdateFolderInput = UnwrapSchema<typeof updateFolderBodySchema>;
-
-export interface FolderResult {
-  createdAt: string;
-  id: string;
-  name: string;
-  parentFolderId: string | null;
-  updatedAt: string;
-}
-
-type SuccessfulFolderMutation = { folder: FolderResult; status: "SUCCESS" };
-
-export type CreateFolderResult =
-  | SuccessfulFolderMutation
-  | { status: "INVALID_NAME" }
-  | { status: "CYCLIC_PARENT" }
-  | { status: "PARENT_NOT_FOUND" };
-
-export type UpdateFolderResult =
-  | { folder: FolderResult; status: "SUCCESS" }
-  | { status: "INVALID_NAME" }
-  | { status: "CYCLIC_PARENT" }
-  | { status: "PARENT_NOT_FOUND" }
-  | { status: "NOT_FOUND" };
-
-export type DeleteFolderResult = { status: "DELETED" | "NOT_FOUND" };
+import { folderRepository } from "../../repositories/folder.repository";
+import { toFolderDto } from "./folders.mapper";
+import type {
+  CreateFolderInput,
+  CreateFolderResult,
+  DeleteFolderResult,
+  UpdateFolderInput,
+  UpdateFolderResult,
+} from "./folders.types";
 
 // TODO: Replace this with the authenticated user's ID once auth is introduced.
 const temporaryUserId = "9e9a548c-dced-4f30-958d-19d423b53028";
-
-function toFolderResult(folder: FolderRecord): FolderResult {
-  return {
-    createdAt: folder.createdAt.toISOString(),
-    id: folder.id,
-    name: folder.name,
-    parentFolderId: folder.parentFolderId,
-    updatedAt: folder.updatedAt.toISOString(),
-  };
-}
 
 function normalizeName(name: string) {
   const normalized = name.trim();
@@ -104,7 +55,7 @@ export async function createFolder(
     userId: temporaryUserId,
   });
 
-  return { folder: toFolderResult(folder), status: "SUCCESS" };
+  return { folder: toFolderDto(folder), status: "SUCCESS" };
 }
 
 export async function updateFolder(
@@ -134,7 +85,7 @@ export async function updateFolder(
   });
 
   return folder
-    ? { folder: toFolderResult(folder), status: "SUCCESS" }
+    ? { folder: toFolderDto(folder), status: "SUCCESS" }
     : { status: "NOT_FOUND" };
 }
 

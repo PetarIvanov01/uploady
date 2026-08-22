@@ -1,24 +1,24 @@
 import { Elysia, t } from "elysia";
 import {
-  completeSingleUploadBodySchema,
   completeSingleUpload,
-} from "../services/complete-upload";
+  initiateSingleUpload,
+  SingleUploadTooLargeError,
+} from "../services/uploads/single-upload.service";
 import {
   abortMultipartUpload,
   completeMultipartUpload,
-  completeMultipartUploadBodySchema,
   createMultipartPartUploadUrl,
   initiateMultipartUpload,
   MultipartUploadNotImplementedError,
+} from "../services/uploads/multipart-upload.service";
+import { SINGLE_UPLOAD_LIMIT_BYTES } from "../services/uploads/upload.constants";
+import {
+  completeMultipartUploadBodySchema,
+  completeSingleUploadBodySchema,
   multipartPartParamsSchema,
   multipartUploadBodySchema,
-} from "../services/multipart-upload";
-import {
-  initiateSingleUpload,
-  SINGLE_UPLOAD_LIMIT_BYTES,
   singleUploadBodySchema,
-  SingleUploadTooLargeError,
-} from "../services/upload-file";
+} from "./uploads.schemas";
 
 const uploadIdParamsSchema = t.Object({
   uploadSessionId: t.String({ format: "uuid" }),

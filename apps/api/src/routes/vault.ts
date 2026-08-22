@@ -3,7 +3,7 @@ import {
   retrieveFileVault,
   retrieveFolderVault,
   retrieveRootVault,
-} from "../services/vault";
+} from "../services/vault/vault.service";
 
 const idParamsSchema = t.Object({
   id: t.String({ format: "uuid" }),

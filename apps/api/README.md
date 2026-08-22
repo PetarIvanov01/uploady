@@ -194,6 +194,7 @@ apps/api/
 │   ├── env.ts                  fail-fast validated API environment singleton
 │   ├── index.ts                Bun listener on PORT (default 3000)
 │   ├── s3.ts                   internal/public S3 clients, presigned GET/PUT, HEAD
+│   ├── util.ts                 shared, domain-neutral conversion helpers
 │   ├── database/
 │   │   ├── index.ts            postgres-js client and Drizzle instance
 │   │   └── schema.ts           tables, enums, references, cascade semantics
@@ -203,15 +204,26 @@ apps/api/
 │   │   └── vault-read.repository.ts combined entries and recursive paths
 │   ├── routes/
 │   │   ├── health.ts           health route
-│   │   ├── uploads.ts          upload request schemas/status mapping
-│   │   ├── folders.ts          folder request schemas/status mapping
-│   │   └── vault.ts            vault request schemas/status mapping
+│   │   ├── uploads.ts          upload handlers and HTTP status mapping
+│   │   ├── uploads.schemas.ts  upload request and parameter validation
+│   │   ├── folders.ts          folder handlers and HTTP status mapping
+│   │   ├── folders.schemas.ts  folder request validation
+│   │   └── vault.ts            vault handlers and parameter validation
 │   └── services/
-│       ├── upload-file.ts      single-upload initialization and 200 MiB limit
-│       ├── complete-upload.ts  storage verification and finalization
-│       ├── multipart-upload.ts multipart contracts; deliberately unimplemented
-│       ├── folders.ts          name normalization, ownership, cycle validation
-│       └── vault.ts            read-model mapping and hierarchy assertions
+│       ├── folders/
+│       │   ├── folders.service.ts name normalization, ownership, cycle validation
+│       │   ├── folders.mapper.ts  folder-record to response-DTO conversion
+│       │   └── folders.types.ts   folder input and result contracts
+│       ├── uploads/
+│       │   ├── single-upload.service.ts initialization and completion workflow
+│       │   ├── single-upload.types.ts   single-upload input and result contracts
+│       │   ├── multipart-upload.service.ts deliberately unimplemented workflow
+│       │   ├── multipart-upload.types.ts  prepared multipart contracts
+│       │   └── upload.constants.ts upload size and part limits
+│       └── vault/
+│           ├── vault.service.ts read orchestration and hierarchy assertions
+│           ├── vault.mapper.ts  repository-record to response-DTO conversions
+│           └── vault.types.ts   vault response contracts
 ├── scripts/
 │   └── init-object-storage.mjs idempotent local bucket and CORS bootstrap
 ├── test/
@@ -227,6 +239,15 @@ Repository modules are the persistence boundary. Services import singleton
 repositories directly; there is no application-wide DI container. Repository
 factory functions still accept `Database` so repository behavior can be tested
 with alternate database instances later.
+
+Service code is grouped by domain. Each `*.service.ts` contains executable
+business logic and runtime error classes, while its neighboring `*.types.ts`
+contains service-specific TypeScript contracts. Repository-record to DTO
+conversion functions live in neighboring `*.mapper.ts` files so service files
+remain focused on orchestration and business rules. Elysia request schemas stay
+in `routes/*.schemas.ts` because validation is part of the HTTP boundary.
+Shared domain constants remain with their service domain; only genuinely
+generic, multi-domain helpers belong in `src/util.ts`.
 
 ## Environment and startup
 
