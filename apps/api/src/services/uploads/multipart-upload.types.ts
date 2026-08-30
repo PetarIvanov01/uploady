@@ -1,8 +1,8 @@
 export interface MultipartUploadInput {
-  checksum: string;
   name: string;
   size: number;
   type: string;
+  checksum: string;
 }
 
 export interface MultipartPartParams {
@@ -14,11 +14,10 @@ export interface CompleteMultipartUploadInput {
   parts: Array<{ etag: string; partNumber: number }>;
 }
 
-export interface MultipartUploadResult {
-  expectedParts: number;
+export type CompleteMultipartParts = CompleteMultipartUploadInput["parts"];
+
+export interface MultipartUploadInitResult {
   expiresAt: string;
-  fileId: string;
-  mode: "MULTIPART";
   partSizeBytes: number;
   uploadSessionId: string;
 }

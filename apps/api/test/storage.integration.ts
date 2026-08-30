@@ -1,6 +1,9 @@
-import { afterAll, describe, expect, it } from "bun:test";
-import { DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { getObjectMetadata, putUrl, s3 } from "../src/s3";
+import { afterAll, describe, expect, it, spyOn } from "bun:test";
+import {
+  CompleteMultipartUploadCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getObjectMetadata, putUrl, s3, storage } from "../src/s3";
 
 const bucketName = process.env.S3_BUCKET_NAME?.trim();
 const corsAllowedOrigin = process.env.S3_CORS_ALLOWED_ORIGIN?.trim();
@@ -68,5 +71,71 @@ describe("S3-compatible storage contract", () => {
     expect(
       await getObjectMetadata(`integration/missing-${crypto.randomUUID()}`),
     ).toBeNull();
+  });
+
+  it("completes a multipart upload with the ETags returned for its parts", async () => {
+    const key = `integration/multipart-${crypto.randomUUID()}`;
+    const firstPart = new Uint8Array(5 * 1024 * 1024);
+    const secondPart = new TextEncoder().encode("final-part");
+    createdKeys.add(key);
+
+    const { uploadId } = await storage.createMultipartUpload(key);
+    let completed = false;
+
+    try {
+      const parts = await Promise.all(
+        [firstPart, secondPart].map(async (body, index) => {
+          const partNumber = index + 1;
+          const uploadUrl = await storage.createMultipartPartUploadUrl(
+            key,
+            uploadId,
+            partNumber,
+          );
+          const response = await fetch(uploadUrl, { body, method: "PUT" });
+
+          expect(response.status).toBe(200);
+
+          const etag = response.headers.get("etag");
+          expect(etag).not.toBeNull();
+
+          return { etag: etag!, partNumber };
+        }),
+      );
+
+      await storage.completeMultipartUpload(key, uploadId, parts);
+      completed = true;
+
+      expect(await getObjectMetadata(key)).toMatchObject({
+        size: firstPart.byteLength + secondPart.byteLength,
+      });
+    } finally {
+      if (!completed) {
+        await storage
+          .abortMultipartUpload(key, uploadId)
+          .catch(() => undefined);
+      }
+    }
+  });
+
+  it("sends each completed part ETag with the AWS SDK field name", async () => {
+    const sendSpy = spyOn(s3, "send").mockImplementation(
+      async () => ({}) as never,
+    );
+
+    try {
+      await storage.completeMultipartUpload("object-key", "storage-upload-id", [
+        { etag: '"part-etag"', partNumber: 1 },
+      ]);
+
+      const command = sendSpy.mock.calls[0]?.[0];
+      expect(command).toBeInstanceOf(CompleteMultipartUploadCommand);
+      expect(
+        (command as CompleteMultipartUploadCommand).input.MultipartUpload,
+      ).toEqual({
+        Parts: [{ ETag: '"part-etag"', PartNumber: 1 }],
+      });
+    } finally {
+      sendSpy.mockRestore();
+    }
   });
 });

@@ -2,16 +2,13 @@ import { Elysia, t } from "elysia";
 import {
   completeSingleUpload,
   initiateSingleUpload,
-  SingleUploadTooLargeError,
 } from "../services/uploads/single-upload.service";
 import {
   abortMultipartUpload,
   completeMultipartUpload,
   createMultipartPartUploadUrl,
   initiateMultipartUpload,
-  MultipartUploadNotImplementedError,
 } from "../services/uploads/multipart-upload.service";
-import { SINGLE_UPLOAD_LIMIT_BYTES } from "../services/uploads/upload.constants";
 import {
   completeMultipartUploadBodySchema,
   completeSingleUploadBodySchema,
@@ -19,16 +16,11 @@ import {
   multipartUploadBodySchema,
   singleUploadBodySchema,
 } from "./uploads.schemas";
+import { toUploadErrorResponse } from "./uploads.error-mapper";
 
 const uploadIdParamsSchema = t.Object({
   uploadSessionId: t.String({ format: "uuid" }),
 });
-
-function multipartNotImplemented(error: unknown): { message: string } | null {
-  return error instanceof MultipartUploadNotImplementedError
-    ? { message: error.message }
-    : null;
-}
 
 export const uploads = new Elysia({ prefix: "/uploads" })
   .post(
@@ -37,12 +29,8 @@ export const uploads = new Elysia({ prefix: "/uploads" })
       try {
         return status(201, await initiateSingleUpload(body));
       } catch (error) {
-        if (error instanceof SingleUploadTooLargeError) {
-          return status(413, {
-            maxSizeBytes: SINGLE_UPLOAD_LIMIT_BYTES,
-            message: error.message,
-          });
-        }
+        const response = toUploadErrorResponse(error);
+        if (response) return status(response.status, response.body);
 
         throw error;
       }
@@ -84,8 +72,8 @@ export const uploads = new Elysia({ prefix: "/uploads" })
       try {
         return status(201, await initiateMultipartUpload(body));
       } catch (error) {
-        const response = multipartNotImplemented(error);
-        if (response) return status(501, response);
+        const response = toUploadErrorResponse(error);
+        if (response) return status(response.status, response.body);
         throw error;
       }
     },
@@ -99,8 +87,8 @@ export const uploads = new Elysia({ prefix: "/uploads" })
       try {
         return await createMultipartPartUploadUrl(params);
       } catch (error) {
-        const response = multipartNotImplemented(error);
-        if (response) return status(501, response);
+        const response = toUploadErrorResponse(error);
+        if (response) return status(response.status, response.body);
         throw error;
       }
     },
@@ -114,8 +102,8 @@ export const uploads = new Elysia({ prefix: "/uploads" })
       try {
         return await completeMultipartUpload(params.uploadSessionId, body);
       } catch (error) {
-        const response = multipartNotImplemented(error);
-        if (response) return status(501, response);
+        const response = toUploadErrorResponse(error);
+        if (response) return status(response.status, response.body);
         throw error;
       }
     },
@@ -131,8 +119,8 @@ export const uploads = new Elysia({ prefix: "/uploads" })
         await abortMultipartUpload(params.uploadSessionId);
         return status(204, undefined);
       } catch (error) {
-        const response = multipartNotImplemented(error);
-        if (response) return status(501, response);
+        const response = toUploadErrorResponse(error);
+        if (response) return status(response.status, response.body);
         throw error;
       }
     },

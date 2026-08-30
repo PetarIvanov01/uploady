@@ -87,11 +87,28 @@ yet accept `parentFolderId`.
 
 ### Multipart upload state
 
-Multipart schemas, constants, route shapes, and service function signatures
-exist, but every operation intentionally throws
-`MultipartUploadNotImplementedError`. The routes return `501`.
+Multipart uploads above 200 MiB are implemented through direct-to-storage part
+uploads:
 
-The prepared limits are:
+1. Initialization transactionally creates the file, first version, and
+   multipart session, then creates storage multipart state and persists its
+   upload ID.
+2. Part size defaults to 100 MiB and increases for large files so every accepted
+   upload stays within the 10,000-part storage limit.
+3. Each part endpoint checks ownership, session state, expiry, the storage
+   upload ID, and the expected part-number range before returning a five-minute
+   presigned `PUT` URL.
+4. Completion requires exactly the expected unique part numbers, orders them,
+   atomically claims `UPLOADING -> COMPLETING`, completes storage, verifies the
+   assembled object's byte size through `HEAD`, and transactionally marks the
+   file/version/session ready.
+5. Concurrent or retried completion observes the persisted claim, does not call
+   storage completion twice, and can finalize a `COMPLETING` session after
+   verifying an already assembled object.
+6. Abort removes storage multipart state and marks the session aborted and its
+   file/version failed.
+
+The enforced limits are:
 
 - minimum multipart file: 200 MiB + 1 byte;
 - default part: 100 MiB;
@@ -147,14 +164,18 @@ no folder `GET` mutation endpoint.
 
 ### Uploads
 
-| Method   | Path                                                           | Behavior                                                        |
-| -------- | -------------------------------------------------------------- | --------------------------------------------------------------- |
-| `POST`   | `/api/v1/uploads/single`                                       | Creates a single-upload session; `201`, or `413` above 200 MiB. |
-| `POST`   | `/api/v1/uploads/single/:fileId/complete`                      | Verifies storage and finalizes; `200`, `404`, or `409`.         |
-| `POST`   | `/api/v1/uploads/multipart`                                    | Contract only; returns `501`.                                   |
-| `POST`   | `/api/v1/uploads/multipart/:uploadSessionId/parts/:partNumber` | Contract only; returns `501`.                                   |
-| `POST`   | `/api/v1/uploads/multipart/:uploadSessionId/complete`          | Contract only; returns `501`.                                   |
-| `DELETE` | `/api/v1/uploads/multipart/:uploadSessionId`                   | Contract only; returns `501`.                                   |
+| Method   | Path                                                           | Behavior                                                               |
+| -------- | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `POST`   | `/api/v1/uploads/single`                                       | Creates a single-upload session; `201`, or `413` above 200 MiB.        |
+| `POST`   | `/api/v1/uploads/single/:fileId/complete`                      | Verifies storage and finalizes; `200`, `404`, or `409`.                |
+| `POST`   | `/api/v1/uploads/multipart`                                    | Creates DB/storage multipart state and returns part planning metadata. |
+| `POST`   | `/api/v1/uploads/multipart/:uploadSessionId/parts/:partNumber` | Returns a presigned storage part-upload URL.                           |
+| `POST`   | `/api/v1/uploads/multipart/:uploadSessionId/complete`          | Verifies part metadata and finalizes storage and database state.       |
+| `DELETE` | `/api/v1/uploads/multipart/:uploadSessionId`                   | Aborts storage state and marks persisted state aborted.                |
+
+Expected multipart failures map to deliberate HTTP responses: inaccessible
+sessions return `404`, undersized initiation returns `413`, and invalid state,
+expiry, part metadata, or completed-object verification returns `409`.
 
 There are currently no endpoints for downloading, moving, renaming, or deleting
 individual files. `s3.ts` exposes a one-hour presigned `getUrl`, but no route
@@ -193,18 +214,19 @@ apps/api/
 │   ├── env.schema.ts           Elysia t schema, normalization, typed env parser
 │   ├── env.ts                  fail-fast validated API environment singleton
 │   ├── index.ts                Bun listener on PORT (default 3000)
-│   ├── s3.ts                   internal/public S3 clients, presigned GET/PUT, HEAD
+│   ├── s3.ts                   presigned object and multipart storage operations
 │   ├── util.ts                 shared, domain-neutral conversion helpers
 │   ├── database/
 │   │   ├── index.ts            postgres-js client and Drizzle instance
 │   │   └── schema.ts           tables, enums, references, cascade semantics
 │   ├── repositories/
-│   │   ├── file.repository.ts  transactional single-upload persistence
+│   │   ├── file.repository.ts  transactional upload-session persistence
 │   │   ├── folder.repository.ts folder create/find/update/delete queries
 │   │   └── vault-read.repository.ts combined entries and recursive paths
 │   ├── routes/
 │   │   ├── health.ts           health route
-│   │   ├── uploads.ts          upload handlers and HTTP status mapping
+│   │   ├── uploads.ts          upload handlers and response composition
+│   │   ├── uploads.error-mapper.ts upload error-to-HTTP translation
 │   │   ├── uploads.schemas.ts  upload request and parameter validation
 │   │   ├── folders.ts          folder handlers and HTTP status mapping
 │   │   ├── folders.schemas.ts  folder request validation
@@ -217,8 +239,10 @@ apps/api/
 │       ├── uploads/
 │       │   ├── single-upload.service.ts initialization and completion workflow
 │       │   ├── single-upload.types.ts   single-upload input and result contracts
-│       │   ├── multipart-upload.service.ts deliberately unimplemented workflow
-│       │   ├── multipart-upload.types.ts  prepared multipart contracts
+│       │   ├── multipart-upload.service.ts multipart planning and lifecycle
+│       │   ├── multipart-upload.types.ts  multipart input and result contracts
+│       │   ├── upload-completion.ts shared completion-claim race resolution
+│       │   ├── upload.errors.ts coded upload-domain errors and messages
 │       │   └── upload.constants.ts upload size and part limits
 │       └── vault/
 │           ├── vault.service.ts read orchestration and hierarchy assertions
@@ -248,6 +272,13 @@ remain focused on orchestration and business rules. Elysia request schemas stay
 in `routes/*.schemas.ts` because validation is part of the HTTP boundary.
 Shared domain constants remain with their service domain; only genuinely
 generic, multi-domain helpers belong in `src/util.ts`.
+
+Upload services throw `UploadError` with a discriminated `UploadErrorCode` and
+do not know about HTTP. `routes/uploads.error-mapper.ts` owns the exhaustive
+code-to-status mapping and gives handled upload errors a consistent
+`{ message }` response body. Adding a new upload error code must update that
+mapping, while unknown infrastructure errors remain unmapped and propagate as
+server errors.
 
 ## Environment and startup
 
@@ -356,10 +387,19 @@ object keys intentionally point to nonexistent fake storage data.
 
 `test/app.test.ts` exercises Elysia through `app.handle(Request)` and currently
 covers health, single upload initialization/size rejection/completion,
-multipart `501`, root/folder/file vault reads and `404`s, folder creation,
-moving, cycle rejection, and successful delete responses for both empty and
-non-empty folders. It also verifies that request-body constraints and UUID path
-parameter validation still return `422` before handlers process invalid input.
+multipart initialization, root/folder/file vault reads and `404`s, folder
+creation, moving, cycle rejection, and successful delete responses for both
+empty and non-empty folders. It also verifies that request-body constraints and
+UUID path parameter validation still return `422` before handlers process
+invalid input.
+
+Multipart request tests cover initialization, the 10,000-part planning limit,
+`404`/`409` service-error mapping, and concurrent completion without duplicate
+storage finalization, including recovery of an already claimed completion.
+`services/uploads/upload-completion.ts` centralizes the atomic completion claim
+and the conditional session refresh needed when another request wins that claim.
+It returns explicit outcomes so the single and multipart workflows do not need
+to duplicate or interpret the concurrency branch themselves.
 `test/env.test.ts` covers runtime defaults, trimming empty optional values,
 numeric/boolean decoding, aggregated invalid-variable reporting, and secret
 redaction.
@@ -375,9 +415,10 @@ Therefore:
 `test/storage.integration.ts` is an opt-in Docker-backed contract run by
 `npm run test:storage`. It starts/reuses RustFS, bootstraps the bucket and CORS,
 then verifies a browser-style CORS preflight, path-style presigned PUT, object
-metadata through HEAD, missing-object behavior, and scoped cleanup. It does not
-exercise PostgreSQL or the complete HTTP upload orchestration. Keep it separate
-from the fast default test suite.
+metadata through HEAD, missing-object behavior, multipart part upload and
+completion, exact AWS SDK `ETag` command construction, and scoped cleanup. It
+does not exercise PostgreSQL or the complete HTTP upload orchestration. Keep it
+separate from the fast default test suite.
 
 ## Known gaps and next likely work
 
@@ -385,8 +426,10 @@ from the fast default test suite.
 2. Accept `parentFolderId` during upload so nested folders can receive files.
 3. Implement file mutations: rename, move, soft/hard delete as product requires.
 4. Add a download endpoint using a short-lived presigned GET URL.
-5. Implement multipart persistence and S3 operations; the current surface is
-   only a typed `501` contract.
+5. Add PostgreSQL-backed multipart lifecycle and crash-recovery tests, and abort
+   orphaned storage multipart state if database activation fails after storage
+   initialization. The staged cross-app resumability design is documented in
+   [`../../docs/resumable-uploads.md`](../../docs/resumable-uploads.md).
 6. Decide whether persisted checksums must be sent to and verified by storage.
 7. Add database integration tests for recursive paths, ordering, counts,
    ownership, concurrent completion, and cascade deletion.
@@ -409,5 +452,5 @@ from the fast default test suite.
   headers, and cookies.
 - Keep API runtime environment access centralized in `env.ts`; extend and test
   `env.schema.ts` when adding a required or optional runtime variable.
-- Do not claim multipart, download, nested upload, or authentication support
-  until the corresponding behavior and tests exist.
+- Do not claim download, nested upload, or authentication support until the
+  corresponding behavior and tests exist.

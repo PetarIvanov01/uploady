@@ -1,33 +1,51 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { database, type Database } from "../database";
 import { files, fileVersions, uploadSessions } from "../database/schema";
 
-export interface CreateSingleUploadSessionInput {
+export type UploadSessionMode = (typeof uploadSessions.$inferSelect)["mode"];
+
+type FindUploadSessionInput = {
+  uploadSessionId: string;
+  userId: string;
+  mode: UploadSessionMode;
+};
+
+export interface CreateUploadSessionInput {
   checksum: string;
+  expectedParts: number;
   expiresAt: Date;
   name: string;
   size: number;
   type: string;
   userId: string;
+  mode: UploadSessionMode;
+  partSizeBytes: number;
 }
 
-export interface CreatedSingleUploadSession {
+export interface CreatedUploadSession {
   expiresAt: Date;
   fileId: string;
   objectKey: string;
   uploadSessionId: string;
 }
 
-export interface SingleUploadSessionRecord {
+export interface UploadSessionRecord {
   contentType: string;
   expiresAt: Date;
   fileId: string;
   fileVersionId: string;
   objectKey: string;
   status: (typeof uploadSessions.$inferSelect)["status"];
+  storageUploadId: string | null;
   totalSizeBytes: number;
   uploadSessionId: string;
+  expectedParts: number;
+}
+
+export interface ActivateUploadSession {
+  uploadSessionId: string;
+  storageUploadId: string;
 }
 
 interface FileRepositoryDependencies {
@@ -35,9 +53,9 @@ interface FileRepositoryDependencies {
 }
 
 export function initFileRepository({ database }: FileRepositoryDependencies) {
-  async function createSingleUploadSession(
-    input: CreateSingleUploadSessionInput,
-  ): Promise<CreatedSingleUploadSession> {
+  async function createUploadSession(
+    input: CreateUploadSessionInput,
+  ): Promise<CreatedUploadSession> {
     const objectKey = `users/${input.userId}/${randomUUID()}`;
 
     return database.transaction(async (tx) => {
@@ -66,13 +84,13 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
       const [uploadSession] = await tx
         .insert(uploadSessions)
         .values({
-          expectedParts: 1,
+          expectedParts: input.expectedParts,
           expiresAt: input.expiresAt,
           fileId: file.id,
           fileVersionId: fileVersion.id,
-          mode: "SINGLE",
+          mode: input.mode,
           objectKey,
-          partSizeBytes: input.size,
+          partSizeBytes: input.partSizeBytes,
           status: "UPLOADING",
           totalSizeBytes: input.size,
         })
@@ -90,18 +108,21 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
     });
   }
 
-  async function findSingleUploadSession(
-    fileId: string,
-    uploadSessionId: string,
-  ): Promise<SingleUploadSessionRecord | null> {
+  async function findUploadSession({
+    uploadSessionId,
+    userId,
+    mode,
+  }: FindUploadSessionInput): Promise<UploadSessionRecord | null> {
     const [record] = await database
       .select({
         contentType: fileVersions.contentType,
         expiresAt: uploadSessions.expiresAt,
+        expectedParts: uploadSessions.expectedParts,
         fileId: uploadSessions.fileId,
         fileVersionId: uploadSessions.fileVersionId,
         objectKey: uploadSessions.objectKey,
         status: uploadSessions.status,
+        storageUploadId: uploadSessions.storageUploadId,
         totalSizeBytes: uploadSessions.totalSizeBytes,
         uploadSessionId: uploadSessions.id,
       })
@@ -110,11 +131,12 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
         fileVersions,
         eq(uploadSessions.fileVersionId, fileVersions.id),
       )
+      .innerJoin(files, eq(uploadSessions.fileId, files.id))
       .where(
         and(
           eq(uploadSessions.id, uploadSessionId),
-          eq(uploadSessions.fileId, fileId),
-          eq(uploadSessions.mode, "SINGLE"),
+          eq(files.userId, userId),
+          eq(uploadSessions.mode, mode),
         ),
       )
       .limit(1);
@@ -127,23 +149,25 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
       : null;
   }
 
-  async function completeSingleUploadSession(
-    session: SingleUploadSessionRecord,
+  async function completeUploadSession(
+    session: UploadSessionRecord,
+    mode: UploadSessionMode,
   ): Promise<boolean> {
     return database.transaction(async (tx) => {
-      const [claimedSession] = await tx
+      const [completedSession] = await tx
         .update(uploadSessions)
-        .set({ status: "COMPLETING" })
+        .set({ completedAt: new Date(), status: "COMPLETED" })
         .where(
           and(
             eq(uploadSessions.id, session.uploadSessionId),
             eq(uploadSessions.fileId, session.fileId),
-            eq(uploadSessions.mode, "SINGLE"),
+            eq(uploadSessions.mode, mode),
+            eq(uploadSessions.status, "COMPLETING"),
           ),
         )
         .returning({ id: uploadSessions.id });
 
-      if (!claimedSession) {
+      if (!completedSession) {
         return false;
       }
 
@@ -161,17 +185,49 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
         })
         .where(eq(files.id, session.fileId));
 
-      await tx
-        .update(uploadSessions)
-        .set({ completedAt: new Date(), status: "COMPLETED" })
-        .where(eq(uploadSessions.id, session.uploadSessionId));
-
       return true;
     });
   }
 
-  async function failSingleUploadSession(
-    session: SingleUploadSessionRecord,
+  async function claimUploadSessionCompletion(
+    session: UploadSessionRecord,
+    mode: UploadSessionMode,
+  ): Promise<boolean> {
+    const [claimedSession] = await database
+      .update(uploadSessions)
+      .set({ status: "COMPLETING" })
+      .where(
+        and(
+          eq(uploadSessions.id, session.uploadSessionId),
+          eq(uploadSessions.fileId, session.fileId),
+          eq(uploadSessions.mode, mode),
+          eq(uploadSessions.status, "UPLOADING"),
+        ),
+      )
+      .returning({ id: uploadSessions.id });
+
+    return Boolean(claimedSession);
+  }
+
+  async function releaseUploadSessionCompletion(
+    session: UploadSessionRecord,
+    mode: UploadSessionMode,
+  ): Promise<void> {
+    await database
+      .update(uploadSessions)
+      .set({ status: "UPLOADING" })
+      .where(
+        and(
+          eq(uploadSessions.id, session.uploadSessionId),
+          eq(uploadSessions.fileId, session.fileId),
+          eq(uploadSessions.mode, mode),
+          eq(uploadSessions.status, "COMPLETING"),
+        ),
+      );
+  }
+
+  async function failUploadSession(
+    session: UploadSessionRecord,
   ): Promise<void> {
     await database.transaction(async (tx) => {
       await tx
@@ -189,11 +245,57 @@ export function initFileRepository({ database }: FileRepositoryDependencies) {
     });
   }
 
+  async function abortUploadSession(
+    session: UploadSessionRecord,
+  ): Promise<void> {
+    await database.transaction(async (tx) => {
+      await tx
+        .update(uploadSessions)
+        .set({ status: "ABORTED" })
+        .where(
+          and(
+            eq(uploadSessions.id, session.uploadSessionId),
+            inArray(uploadSessions.status, ["CREATED", "UPLOADING"]),
+          ),
+        );
+
+      await tx
+        .update(fileVersions)
+        .set({ status: "FAILED" })
+        .where(eq(fileVersions.id, session.fileVersionId));
+
+      await tx
+        .update(files)
+        .set({
+          status: "FAILED",
+          updatedAt: new Date(),
+        })
+        .where(eq(files.id, session.fileId));
+    });
+  }
+
+  async function activateUploadSession({
+    uploadSessionId,
+    storageUploadId,
+  }: ActivateUploadSession): Promise<void> {
+    await database
+      .update(uploadSessions)
+      .set({
+        storageUploadId,
+        status: "UPLOADING",
+      })
+      .where(eq(uploadSessions.id, uploadSessionId));
+  }
+
   return {
-    completeSingleUploadSession,
-    createSingleUploadSession,
-    failSingleUploadSession,
-    findSingleUploadSession,
+    claimUploadSessionCompletion,
+    completeUploadSession,
+    createUploadSession,
+    failUploadSession,
+    findUploadSession,
+    releaseUploadSessionCompletion,
+    activateUploadSession,
+    abortUploadSession,
   };
 }
 

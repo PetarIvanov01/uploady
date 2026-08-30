@@ -11,6 +11,8 @@ import type {
   SingleUploadInput,
   SingleUploadResult,
 } from "./single-upload.types";
+import { resolveUploadCompletionClaim } from "./upload-completion";
+import { UploadError } from "./upload.errors";
 
 // TODO: Replace this with the authenticated user's ID once auth is introduced.
 const temporaryUserId = "9e9a548c-dced-4f30-958d-19d423b53028";
@@ -19,16 +21,20 @@ export async function initiateSingleUpload(
   input: SingleUploadInput,
 ): Promise<SingleUploadResult> {
   if (input.size > SINGLE_UPLOAD_LIMIT_BYTES) {
-    throw new SingleUploadTooLargeError();
+    throw new UploadError("SINGLE_TOO_LARGE");
   }
 
   const expiresAt = new Date(
     Date.now() + PRESIGNED_UPLOAD_EXPIRES_IN_SECONDS * 1000,
   );
-  const session = await fileRepository.createSingleUploadSession({
+
+  const session = await fileRepository.createUploadSession({
     ...input,
     expiresAt,
     userId: temporaryUserId,
+    mode: "SINGLE",
+    expectedParts: 1,
+    partSizeBytes: input.size,
   });
 
   try {
@@ -42,13 +48,14 @@ export async function initiateSingleUpload(
       uploadUrl: await putUrl(session.objectKey, input.type),
     };
   } catch (error) {
-    const persistedSession = await fileRepository.findSingleUploadSession(
-      session.fileId,
-      session.uploadSessionId,
-    );
+    const persistedSession = await fileRepository.findUploadSession({
+      mode: "SINGLE",
+      uploadSessionId: session.uploadSessionId,
+      userId: temporaryUserId,
+    });
 
     if (persistedSession) {
-      await fileRepository.failSingleUploadSession(persistedSession);
+      await fileRepository.failUploadSession(persistedSession);
     }
 
     throw error;
@@ -59,10 +66,11 @@ export async function completeSingleUpload(
   fileId: string,
   input: CompleteSingleUploadInput,
 ): Promise<CompleteSingleUploadResult> {
-  const session = await fileRepository.findSingleUploadSession(
-    fileId,
-    input.uploadSessionId,
-  );
+  let session = await fileRepository.findUploadSession({
+    userId: temporaryUserId,
+    uploadSessionId: input.uploadSessionId,
+    mode: "SINGLE",
+  });
 
   if (!session) return { status: "NOT_FOUND" };
 
@@ -74,8 +82,15 @@ export async function completeSingleUpload(
     };
   }
 
-  if (session.expiresAt.getTime() <= Date.now()) {
-    await fileRepository.failSingleUploadSession(session);
+  if (session.status !== "UPLOADING" && session.status !== "COMPLETING") {
+    return { status: "NOT_FOUND" };
+  }
+
+  if (
+    session.status === "UPLOADING" &&
+    session.expiresAt.getTime() <= Date.now()
+  ) {
+    await fileRepository.failUploadSession(session);
     return { status: "EXPIRED" };
   }
 
@@ -83,17 +98,41 @@ export async function completeSingleUpload(
   if (!object) return { status: "NOT_UPLOADED" };
 
   if (object.size !== session.totalSizeBytes) {
-    await fileRepository.failSingleUploadSession(session);
+    await fileRepository.failUploadSession(session);
     return { status: "SIZE_MISMATCH" };
   }
 
-  const completed = await fileRepository.completeSingleUploadSession(session);
+  const claim = await resolveUploadCompletionClaim({
+    mode: "SINGLE",
+    session,
+    userId: temporaryUserId,
+  });
+
+  if (claim.outcome === "COMPLETED") {
+    return {
+      fileId,
+      status: "COMPLETED",
+      uploadSessionId: claim.session.uploadSessionId,
+    };
+  }
+
+  if (claim.outcome === "INVALID_STATE" || claim.outcome === "NOT_FOUND") {
+    return { status: "NOT_FOUND" };
+  }
+
+  session = claim.session;
+
+  const completed = await fileRepository.completeUploadSession(
+    session,
+    "SINGLE",
+  );
 
   if (!completed) {
-    const latestSession = await fileRepository.findSingleUploadSession(
-      fileId,
-      input.uploadSessionId,
-    );
+    const latestSession = await fileRepository.findUploadSession({
+      userId: temporaryUserId,
+      uploadSessionId: input.uploadSessionId,
+      mode: "SINGLE",
+    });
 
     if (latestSession?.status !== "COMPLETED") {
       return { status: "NOT_FOUND" };
@@ -105,11 +144,4 @@ export async function completeSingleUpload(
     status: "COMPLETED",
     uploadSessionId: session.uploadSessionId,
   };
-}
-
-export class SingleUploadTooLargeError extends Error {
-  constructor() {
-    super(`Single uploads cannot exceed ${SINGLE_UPLOAD_LIMIT_BYTES} bytes`);
-    this.name = "SingleUploadTooLargeError";
-  }
 }

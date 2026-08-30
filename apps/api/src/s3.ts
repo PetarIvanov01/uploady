@@ -4,9 +4,15 @@ import {
   PutObjectCommand,
   S3Client,
   S3ServiceException,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
 } from "@aws-sdk/client-s3";
+
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "./env";
+import type { CompleteMultipartParts } from "./services/uploads/multipart-upload.types";
 
 const endpoint = env.S3_ENDPOINT_URL;
 const publicEndpoint = env.S3_PUBLIC_ENDPOINT_URL;
@@ -81,3 +87,75 @@ export async function getObjectMetadata(
     throw error;
   }
 }
+
+export async function createMultipartUpload(
+  objectKey: string,
+): Promise<{ uploadId: string }> {
+  const command = new CreateMultipartUploadCommand({
+    Bucket: bucketName,
+    Key: objectKey,
+  });
+
+  const upload = await s3.send(command);
+
+  if (!upload.UploadId) {
+    throw new Error("Storage provider did not return an upload ID");
+  }
+
+  return {
+    uploadId: upload.UploadId,
+  };
+}
+
+const createMultipartPartUploadUrl = async (
+  objectKey: string,
+  uploadId: string,
+  partNumber: number,
+) =>
+  getSignedUrl(
+    presigningS3,
+    new UploadPartCommand({
+      Bucket: bucketName,
+      Key: objectKey,
+      UploadId: uploadId,
+      PartNumber: partNumber,
+    }),
+    { expiresIn: PRESIGNED_UPLOAD_EXPIRES_IN_SECONDS },
+  );
+
+const completeMultipartUpload = async (
+  objectKey: string,
+  storageUploadId: string,
+  parts: CompleteMultipartParts,
+): Promise<void> => {
+  const command = new CompleteMultipartUploadCommand({
+    Bucket: bucketName,
+    Key: objectKey,
+    UploadId: storageUploadId,
+    MultipartUpload: {
+      Parts: parts.map((e) => ({ PartNumber: e.partNumber, ETag: e.etag })),
+    },
+  });
+
+  await s3.send(command);
+};
+
+const abortMultipartUpload = async (
+  objectKey: string,
+  storageUploadId: string,
+): Promise<void> => {
+  const command = new AbortMultipartUploadCommand({
+    Bucket: bucketName,
+    Key: objectKey,
+    UploadId: storageUploadId,
+  });
+
+  await s3.send(command);
+};
+
+export const storage = {
+  createMultipartUpload,
+  createMultipartPartUploadUrl,
+  completeMultipartUpload,
+  abortMultipartUpload,
+};

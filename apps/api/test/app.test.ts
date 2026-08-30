@@ -1,9 +1,17 @@
-import { describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock } from "bun:test";
 import type {
   CreateFolderInput,
   UpdateFolderInput,
 } from "../src/repositories/folder.repository";
-import type { CreateSingleUploadSessionInput } from "../src/repositories/file.repository";
+import type {
+  CreateUploadSessionInput,
+  UploadSessionRecord,
+} from "../src/repositories/file.repository";
+import {
+  MULTIPART_DEFAULT_PART_BYTES,
+  MULTIPART_MAX_FILE_BYTES,
+  MULTIPART_MAX_PARTS,
+} from "../src/services/uploads/upload.constants";
 
 Object.assign(process.env, {
   DATABASE_URL: "postgresql://uploady:uploady@localhost:5432/uploady-test",
@@ -21,10 +29,16 @@ const singleUploadLimitBytes = 200 * 1024 * 1024;
 
 const fileId = "f0a6d1d4-1ef7-48df-9d8f-e13b2aa68bc1";
 const uploadSessionId = "9462f628-276c-42cc-9a0d-1aa794ad7f06";
+const multipartUploadSessionId = "092bab59-2420-4cd9-83af-7250d9ca704a";
+const missingUploadSessionId = "0a5a9e33-6a3b-4830-ab31-50c6327e41e4";
 const fileVersionId = "68827f7a-b376-4905-a898-3cd5d45a2978";
+const multipartFileId = "9613a679-baa8-4ad8-8884-57899b32a5fd";
+const multipartFileVersionId = "3968d573-ed4e-4a24-b8e2-d243a1217c83";
 const createdAt = "2026-08-14T18:00:00.000Z";
 const expiresAt = new Date("2026-08-14T18:05:00.000Z");
+const multipartExpiresAt = new Date(Date.now() + 60_000);
 const objectKey = `users/test/${fileId}`;
+const multipartObjectKey = `users/test/${multipartFileId}`;
 const folderId = "a528cd92-3d83-4e05-ab7b-777341322916";
 const childFolderId = "30e8a81f-0ee7-4eb8-8e78-e296cfbe674a";
 const createdFolderId = "e60f0291-6c88-4e27-bbab-78ad98487df5";
@@ -83,40 +97,117 @@ const singleUploadSession = {
   fileId,
   fileVersionId,
   objectKey,
+  expectedParts: 1,
   status: "UPLOADING" as const,
+  storageUploadId: null,
   totalSizeBytes: 12,
   uploadSessionId,
-};
+} satisfies UploadSessionRecord;
+
+const multipartUploadSession = {
+  contentType: "application/octet-stream",
+  expectedParts: 2,
+  expiresAt: multipartExpiresAt,
+  fileId: multipartFileId,
+  fileVersionId: multipartFileVersionId,
+  objectKey: multipartObjectKey,
+  status: "UPLOADING" as const,
+  storageUploadId: "storage-upload-id",
+  totalSizeBytes: 50 * 1024 * 1024,
+  uploadSessionId: multipartUploadSessionId,
+} satisfies UploadSessionRecord;
+
+let createdUploadInput: CreateUploadSessionInput | null = null;
+let multipartStorageCompletionCalls = 0;
+let multipartSessionStatus: UploadSessionRecord["status"] = "UPLOADING";
 
 await mock.module("../src/s3", () => ({
   PRESIGNED_UPLOAD_EXPIRES_IN_SECONDS: 300,
-  getObjectMetadata: async () => ({
+  getObjectMetadata: async (requestedObjectKey: string) => ({
     contentType: "text/plain",
     etag: '"test-etag"',
-    size: 12,
+    size:
+      requestedObjectKey === multipartObjectKey
+        ? multipartUploadSession.totalSizeBytes
+        : 12,
   }),
   putUrl: async () => "https://storage.example/upload",
+  storage: {
+    abortMultipartUpload: async () => undefined,
+    completeMultipartUpload: async () => {
+      multipartStorageCompletionCalls += 1;
+    },
+    createMultipartPartUploadUrl: async () =>
+      "https://storage.example/upload-part",
+    createMultipartUpload: async () => ({ uploadId: "storage-upload-id" }),
+  },
 }));
 
 await mock.module("../src/repositories/file.repository", () => ({
   fileRepository: {
-    completeSingleUploadSession: async () => true,
-    createSingleUploadSession: async (
-      _input: CreateSingleUploadSessionInput,
-    ) => ({
-      expiresAt,
-      fileId,
-      objectKey,
-      uploadSessionId,
-    }),
-    failSingleUploadSession: async () => undefined,
-    findSingleUploadSession: async (
-      requestedFileId: string,
-      requestedSessionId: string,
-    ) =>
-      requestedFileId === fileId && requestedSessionId === uploadSessionId
-        ? singleUploadSession
-        : null,
+    abortUploadSession: async () => undefined,
+    activateUploadSession: async () => undefined,
+    claimUploadSessionCompletion: async (
+      _session: UploadSessionRecord,
+      mode: "MULTIPART" | "SINGLE",
+    ) => {
+      if (mode === "SINGLE") return true;
+      if (multipartSessionStatus !== "UPLOADING") return false;
+      multipartSessionStatus = "COMPLETING";
+      return true;
+    },
+    completeUploadSession: async (
+      _session: UploadSessionRecord,
+      mode: "MULTIPART" | "SINGLE",
+    ) => {
+      if (mode === "SINGLE") return true;
+      if (multipartSessionStatus !== "COMPLETING") return false;
+      multipartSessionStatus = "COMPLETED";
+      return true;
+    },
+    createUploadSession: async (input: CreateUploadSessionInput) => {
+      createdUploadInput = input;
+
+      return input.mode === "MULTIPART"
+        ? {
+            expiresAt: multipartExpiresAt,
+            fileId: multipartFileId,
+            objectKey: multipartObjectKey,
+            uploadSessionId: multipartUploadSessionId,
+          }
+        : {
+            expiresAt,
+            fileId,
+            objectKey,
+            uploadSessionId,
+          };
+    },
+    failUploadSession: async () => undefined,
+    findUploadSession: async (input: {
+      mode: "MULTIPART" | "SINGLE";
+      uploadSessionId: string;
+      userId: string;
+    }) => {
+      if (input.uploadSessionId === missingUploadSessionId) return null;
+      if (
+        input.mode === "SINGLE" &&
+        input.uploadSessionId === uploadSessionId
+      ) {
+        return singleUploadSession;
+      }
+      if (
+        input.mode === "MULTIPART" &&
+        input.uploadSessionId === multipartUploadSessionId
+      ) {
+        return { ...multipartUploadSession, status: multipartSessionStatus };
+      }
+      return null;
+    },
+    releaseUploadSessionCompletion: async () => {
+      if (multipartSessionStatus === "COMPLETING") {
+        multipartSessionStatus = "UPLOADING";
+      }
+    },
   },
 }));
 
@@ -165,6 +256,12 @@ await mock.module("../src/repositories/vault-read.repository", () => ({
 const { app } = await import("../src/app");
 
 describe("API", () => {
+  beforeEach(() => {
+    createdUploadInput = null;
+    multipartStorageCompletionCalls = 0;
+    multipartSessionStatus = "UPLOADING";
+  });
+
   it("reports its health", async () => {
     const response = await app.handle(
       new Request("http://localhost/api/v1/health"),
@@ -216,7 +313,6 @@ describe("API", () => {
 
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({
-      maxSizeBytes: singleUploadLimitBytes,
       message: `Single uploads cannot exceed ${singleUploadLimitBytes} bytes`,
     });
   });
@@ -255,7 +351,7 @@ describe("API", () => {
     });
   });
 
-  it("exposes the multipart initiation contract as not implemented", async () => {
+  it("initializes a multipart upload", async () => {
     const response = await app.handle(
       new Request("http://localhost/api/v1/uploads/multipart", {
         method: "POST",
@@ -269,10 +365,120 @@ describe("API", () => {
       }),
     );
 
-    expect(response.status).toBe(501);
+    expect(response.status).toBe(201);
     expect(await response.json()).toEqual({
-      message: "Multipart uploads are not implemented yet",
+      expiresAt: multipartExpiresAt.toISOString(),
+      partSizeBytes: MULTIPART_DEFAULT_PART_BYTES,
+      uploadSessionId: multipartUploadSessionId,
     });
+  });
+
+  it("does not initialize more multipart parts than storage supports", async () => {
+    const response = await app.handle(
+      new Request("http://localhost/api/v1/uploads/multipart", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          checksum: "sha256:test",
+          name: "maximum-size.bin",
+          size: MULTIPART_MAX_FILE_BYTES,
+          type: "application/octet-stream",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(createdUploadInput).not.toBeNull();
+    expect(createdUploadInput!.expectedParts).toBeLessThanOrEqual(
+      MULTIPART_MAX_PARTS,
+    );
+  });
+
+  it("returns 404 when a multipart upload session does not exist", async () => {
+    const response = await app.handle(
+      new Request(
+        `http://localhost/api/v1/uploads/multipart/${missingUploadSessionId}/parts/1`,
+        { method: "POST" },
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({
+      message: "Upload session not found",
+    });
+  });
+
+  it("returns 409 when multipart completion contains duplicate parts", async () => {
+    const response = await app.handle(
+      new Request(
+        `http://localhost/api/v1/uploads/multipart/${multipartUploadSessionId}/complete`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            parts: [
+              { etag: '"part-1"', partNumber: 1 },
+              { etag: '"part-1-again"', partNumber: 1 },
+            ],
+          }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      message: "Multipart upload contains duplicate part numbers",
+    });
+  });
+
+  it("completes storage only once for concurrent multipart completion requests", async () => {
+    const request = () =>
+      app.handle(
+        new Request(
+          `http://localhost/api/v1/uploads/multipart/${multipartUploadSessionId}/complete`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              parts: [
+                { etag: '"part-1"', partNumber: 1 },
+                { etag: '"part-2"', partNumber: 2 },
+              ],
+            }),
+          },
+        ),
+      );
+
+    const responses = await Promise.all([request(), request()]);
+
+    expect(responses.every(({ status }) => status < 500)).toBeTrue();
+    expect(multipartStorageCompletionCalls).toBe(1);
+  });
+
+  it("recovers a claimed multipart completion without calling storage again", async () => {
+    multipartSessionStatus = "COMPLETING";
+
+    const response = await app.handle(
+      new Request(
+        `http://localhost/api/v1/uploads/multipart/${multipartUploadSessionId}/complete`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            parts: [
+              { etag: '"part-1"', partNumber: 1 },
+              { etag: '"part-2"', partNumber: 2 },
+            ],
+          }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(multipartStorageCompletionCalls).toBe(0);
+    expect(multipartSessionStatus as UploadSessionRecord["status"]).toBe(
+      "COMPLETED",
+    );
   });
 
   it("retrieves the root vault read model", async () => {

@@ -17,13 +17,13 @@ export const completeSingleUploadBodySchema = t.Object({
 });
 
 export const multipartUploadBodySchema = t.Object({
-  checksum: t.String({ maxLength: 128, minLength: 1 }),
   name: t.String({ maxLength: 255, minLength: 1 }),
   size: t.Integer({
     maximum: MULTIPART_MAX_FILE_BYTES,
     minimum: SINGLE_UPLOAD_LIMIT_BYTES + 1,
   }),
   type: t.String({ maxLength: 255, minLength: 1 }),
+  checksum: t.String({ maxLength: 128, minLength: 1 }),
 });
 
 export const multipartPartParamsSchema = t.Object({
