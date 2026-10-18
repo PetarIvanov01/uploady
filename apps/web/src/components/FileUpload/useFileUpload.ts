@@ -1,80 +1,10 @@
 import { useRef, useState, type ChangeEvent } from "react";
-import { api } from "../../lib/api";
-import {
-  responseErrorMessage,
-  unknownErrorMessage,
-} from "../../utils/error-message";
+import { multipartUpload } from "./utils/upload-multipart";
+import { uploadSingleFile } from "./utils/upload-single";
+import { unknownErrorMessage } from "../../utils/error-message";
 
 const singleUploadLimitBytes = 200 * 1024 * 1024;
-const minimumPhaseDurationMs = 350;
-
-async function calculateChecksum(file: File) {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    await file.arrayBuffer(),
-  );
-  const hexadecimal = Array.from(new Uint8Array(digest), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-
-  return `sha256:${hexadecimal}`;
-}
-
-async function waitForMinimumDuration(startedAt: number) {
-  const remaining = minimumPhaseDurationMs - (performance.now() - startedAt);
-
-  if (remaining > 0) {
-    await new Promise((resolve) => window.setTimeout(resolve, remaining));
-  }
-}
-
-type StorageUploadOptions = {
-  file: File;
-  headers: Record<string, string>;
-  method: string;
-  onProgress: (loaded: number, total: number) => void;
-  url: string;
-};
-
-function uploadToStorage({
-  file,
-  headers,
-  method,
-  onProgress,
-  url,
-}: StorageUploadOptions) {
-  return new Promise<void>((resolve, reject) => {
-    const request = new XMLHttpRequest();
-
-    request.open(method, url);
-    Object.entries(headers).forEach(([name, value]) => {
-      request.setRequestHeader(name, value);
-    });
-
-    request.upload.addEventListener("progress", (event) => {
-      onProgress(
-        event.loaded,
-        event.lengthComputable ? event.total : file.size,
-      );
-    });
-    request.addEventListener("load", () => {
-      if (request.status >= 200 && request.status < 300) {
-        onProgress(file.size, file.size);
-        resolve();
-        return;
-      }
-
-      reject(new Error(`Storage upload failed (${request.status}).`));
-    });
-    request.addEventListener("error", () => {
-      reject(new Error("The storage upload could not be reached."));
-    });
-    request.addEventListener("timeout", () => {
-      reject(new Error("The storage upload timed out."));
-    });
-    request.send(file);
-  });
-}
+const maximumFilesPerBatch = 5;
 
 export type UploadState =
   | { status: "idle" }
@@ -88,8 +18,18 @@ export type UploadState =
       total: number;
     }
   | { status: "verifying" }
-  | { status: "success"; fileName: string; size: number }
-  | { status: "error"; message: string };
+  | { status: "success"; fileCount: number; size: number }
+  | { status: "error"; message: string; retryable: boolean };
+
+type UploadItemStatus = "pending" | "success" | "error";
+type UploadStrategy = "single" | "multipart";
+
+type UploadItem = {
+  file: File;
+  id: string;
+  status: UploadItemStatus;
+  strategy: UploadStrategy;
+};
 
 type UseFileUploadOptions = {
   onUploadSuccess?: () => void;
@@ -97,18 +37,37 @@ type UseFileUploadOptions = {
 
 export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const isWorkingRef = useRef(false);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [uploadState, setUploadState] = useState<UploadState>({
     status: "idle",
   });
 
-  function selectFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
 
-    if (!file) return;
+    if (!files?.length) return;
 
-    setSelectedFile(file);
-    setUploadState({ status: "idle" });
+    const selectedFiles = Array.from(files);
+
+    setUploadItems(
+      selectedFiles.map((file) => ({
+        file,
+        id: crypto.randomUUID(),
+        status: "pending",
+        strategy: file.size > singleUploadLimitBytes ? "multipart" : "single",
+      })),
+    );
+
+    setUploadState(
+      selectedFiles.length > maximumFilesPerBatch
+        ? {
+            status: "error",
+            message: `You can upload up to ${maximumFilesPerBatch} files at a time.`,
+            retryable: false,
+          }
+        : { status: "idle" },
+    );
   }
 
   function openFilePicker() {
@@ -118,123 +77,140 @@ export function useFileUpload({ onUploadSuccess }: UseFileUploadOptions = {}) {
     inputRef.current.click();
   }
 
-  async function uploadSelectedFile() {
-    if (!selectedFile || uploadState.status === "uploading") return;
-
-    if (selectedFile.size === 0) {
-      setUploadState({
-        status: "error",
-        message: "Empty files cannot be uploaded.",
-      });
-      return;
-    }
-
-    if (selectedFile.size > singleUploadLimitBytes) {
-      setUploadState({
-        status: "error",
-        message: "Files over 200 MB are not supported yet.",
-      });
-      return;
-    }
-
-    try {
-      const preparingStartedAt = performance.now();
-      setUploadState({ status: "preparing" });
-      const checksum = await calculateChecksum(selectedFile);
-      await waitForMinimumDuration(preparingStartedAt);
-
-      const contentType = selectedFile.type || "application/octet-stream";
-      const payload = {
-        checksum,
-        name: selectedFile.name,
-        size: selectedFile.size,
-        type: contentType,
-      };
-
-      const initializingStartedAt = performance.now();
-      setUploadState({ status: "initializing" });
-      const response = await api.v1.uploads.single.post(payload);
-
-      if (response.error !== null) {
-        throw new Error(
-          responseErrorMessage(
-            response.error,
-            `Could not initialize the upload (${response.status}).`,
-          ),
-        );
-      }
-
-      const session = response.data;
-      await waitForMinimumDuration(initializingStartedAt);
-
-      const uploadingStartedAt = performance.now();
-      setUploadState({
-        status: "uploading",
-        expiresAt: session.expiresAt,
-        loaded: 0,
-        progress: 0,
-        total: selectedFile.size,
-      });
-      await uploadToStorage({
-        file: selectedFile,
-        headers: session.headers,
-        method: session.method,
-        onProgress: (loaded, total) => {
-          setUploadState({
-            status: "uploading",
-            expiresAt: session.expiresAt,
-            loaded,
-            progress: total > 0 ? Math.min(100, (loaded / total) * 100) : 0,
-            total,
-          });
-        },
-        url: session.uploadUrl,
-      });
-      await waitForMinimumDuration(uploadingStartedAt);
-
-      const verifyingStartedAt = performance.now();
-      setUploadState({ status: "verifying" });
-      const completionResponse = await api.v1.uploads
-        .single({ fileId: session.fileId })
-        .complete.post({ uploadSessionId: session.uploadSessionId });
-
-      if (completionResponse.error !== null) {
-        throw new Error(
-          responseErrorMessage(
-            completionResponse.error,
-            "The upload could not be verified.",
-          ),
-        );
-      }
-
-      await waitForMinimumDuration(verifyingStartedAt);
-      setUploadState({
-        status: "success",
-        fileName: selectedFile.name,
-        size: selectedFile.size,
-      });
-      onUploadSuccess?.();
-    } catch (error) {
-      setUploadState({
-        status: "error",
-        message: unknownErrorMessage(error, "The upload failed."),
-      });
-    }
+  function updateUploadItem(id: string, changes: Partial<UploadItem>) {
+    setUploadItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === id ? { ...item, ...changes } : item,
+      ),
+    );
   }
 
-  const isWorking =
-    uploadState.status === "preparing" ||
-    uploadState.status === "initializing" ||
-    uploadState.status === "uploading" ||
-    uploadState.status === "verifying";
+  async function uploadSelectedFiles() {
+    if (uploadItems.length === 0 || isWorkingRef.current) return;
+
+    if (uploadItems.length > maximumFilesPerBatch) {
+      setUploadState({
+        status: "error",
+        message: `You can upload up to ${maximumFilesPerBatch} files at a time.`,
+        retryable: false,
+      });
+      return;
+    }
+
+    const emptyFiles = uploadItems.filter((item) => item.file.size === 0);
+
+    if (emptyFiles.length > 0) {
+      setUploadState({
+        status: "error",
+        message:
+          emptyFiles.length === 1
+            ? `“${emptyFiles[0].file.name}” is empty and cannot be uploaded.`
+            : `${emptyFiles.length} empty files cannot be uploaded.`,
+        retryable: false,
+      });
+      return;
+    }
+
+    const totalSize = uploadItems.reduce(
+      (total, item) => total + item.file.size,
+      0,
+    );
+
+    const itemsToUpload = uploadItems.filter(
+      (item) => item.status !== "success",
+    );
+
+    let completedSize = uploadItems.reduce(
+      (total, item) => total + (item.status === "success" ? item.file.size : 0),
+      0,
+    );
+
+    let uploadedAnyFile = false;
+    const failedFiles: Array<{ message: string; name: string }> = [];
+    const preservePhaseDuration = uploadItems.length === 1;
+
+    isWorkingRef.current = true;
+
+    try {
+      for (const item of itemsToUpload) {
+        const { file } = item;
+
+        try {
+          updateUploadItem(item.id, { status: "pending" });
+          const uploadFile =
+            item.strategy === "multipart" ? multipartUpload : uploadSingleFile;
+
+          await uploadFile({
+            body: file,
+            name: file.name,
+            onPhase: (status) => {
+              setUploadState({ status });
+            },
+            onProgress: (loaded, expiresAt) => {
+              const aggregateLoaded = Math.min(
+                totalSize,
+                completedSize + loaded,
+              );
+              const progress =
+                totalSize > 0
+                  ? Math.min(100, (aggregateLoaded / totalSize) * 100)
+                  : 0;
+
+              setUploadState({
+                status: "uploading",
+                expiresAt,
+                loaded: aggregateLoaded,
+                progress,
+                total: totalSize,
+              });
+            },
+            preservePhaseDuration,
+          });
+          completedSize += file.size;
+          uploadedAnyFile = true;
+          updateUploadItem(item.id, { status: "success" });
+        } catch (error) {
+          const message = unknownErrorMessage(error, "The upload failed.");
+
+          failedFiles.push({ message, name: file.name });
+          updateUploadItem(item.id, { status: "error" });
+        }
+      }
+
+      if (failedFiles.length > 0) {
+        setUploadState({
+          status: "error",
+          message:
+            failedFiles.length === 1
+              ? `“${failedFiles[0].name}” could not be uploaded: ${failedFiles[0].message}`
+              : `${failedFiles.length} files could not be uploaded. Retry to try them again.`,
+          retryable: true,
+        });
+      } else {
+        setUploadState({
+          status: "success",
+          fileCount: uploadItems.length,
+          size: totalSize,
+        });
+      }
+    } finally {
+      isWorkingRef.current = false;
+    }
+
+    if (uploadedAnyFile) onUploadSuccess?.();
+  }
 
   return {
     inputRef,
-    isWorking,
+    isWorking:
+      uploadState.status === "preparing" ||
+      uploadState.status === "initializing" ||
+      uploadState.status === "uploading" ||
+      uploadState.status === "verifying",
     openFilePicker,
-    selectedFile,
-    selectFile,
-    uploadSelectedFile,
+    selectedFiles: uploadItems.map((item) => item.file),
+    selectFiles,
+    uploadSelectedFiles,
     uploadState,
   };
 }

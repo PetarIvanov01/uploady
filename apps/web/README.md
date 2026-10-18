@@ -79,6 +79,18 @@ types, while typed service/application return values flow through Elysia
 handlers into Eden response types. Response schemas are not duplicated solely
 for Eden typing.
 
+`src/lib/api.ts` also centralizes schema-exact request aliases for every upload
+route body and path-param contract: single and multipart initialization, single
+completion, multipart part URL creation, multipart completion, and multipart
+abort. The types are selected from their endpoint leaves in `App["~Routes"]`.
+This avoids duplicating request interfaces and preserves schema types such as a
+string upload-session ID and numeric part number; Treaty's separate dynamic
+callable nodes otherwise widen both to `string | number`. Keep the internal
+route-tree dependency isolated in `src/lib/api.ts` until Eden provides public
+request-side inference utilities.
+For bodyless `POST` helpers, pass `undefined` as Treaty's first argument and
+request configuration such as an abort signal as its second argument.
+
 - In normal development, no `VITE_API_URL` is needed; same-origin `/api` calls
   go through Vite's port-3000 proxy.
 - For a separately hosted API, set `VITE_API_URL` to the API origin, such as
@@ -138,25 +150,46 @@ deleting a child, it invalidates the current route.
 `FileUpload` is enabled only at the root. In nested folders it is intentionally
 rendered disabled because the backend upload contract has no `parentFolderId`.
 
-The active upload state machine is implemented in `useFileUpload`:
+The active upload state machine is implemented in `useFileUpload`. The picker
+accepts up to five files per batch and rejects empty files. Upload strategy is
+selected independently per file: files up to and including 200 MiB use the
+single-upload workflow, while larger files use the sequential multipart
+workflow.
 
-1. reject empty files and files above 200 MiB;
-2. read the entire file into memory and calculate `sha256:<hex>` with Web Crypto;
-3. initialize through `POST /api/v1/uploads/single`;
-4. upload directly to the presigned storage URL with `XMLHttpRequest` so upload
-   progress events are available;
-5. call the backend completion endpoint;
-6. show success and invalidate the current vault route.
+Eligible single-upload files run sequentially through independent workflows:
+
+1. initialize its own session through `POST /api/v1/uploads/single`;
+2. upload directly to its presigned storage URL with `XMLHttpRequest`;
+3. call that file's backend completion endpoint;
+4. continue with the next queued file.
+
+Progress reports aggregate uploaded bytes across the selection. A failed file
+does not prevent later files from being attempted, successful items are retained,
+and Retry attempts only failed items. A successful or partially successful batch
+invalidates the current vault route once after the batch attempt.
 
 The `Content-Type` header returned by the backend must be sent exactly to the
 presigned URL. The S3/R2 bucket requires browser CORS for the web origin, `PUT`,
-and `Content-Type`. Local RustFS is bootstrapped with this rule for
+and `Content-Type`; multipart uploads also require CORS to expose the response
+`ETag`. Local RustFS is bootstrapped with these rules for
 `http://localhost:5173`; changing the web origin requires setting
 `RUSTFS_CORS_ALLOWED_ORIGIN` and rerunning `npm run storage:up`.
 
-Each non-uploading phase is shown for at least 350 ms to avoid UI flicker. The
-checksum implementation duplicates up to 200 MiB into browser memory, which is
-a known scalability limitation. Multipart upload is not available.
+The multipart workflow uses the server-provided part size, uploads parts
+sequentially, and requests a fresh presigned URL immediately before each part.
+`lib/upload/multi.ts` uploads each sliced blob directly to storage, preserves its
+returned `ETag`, and submits the ordered part list for backend completion. Its
+storage helper rejects unreachable storage, non-2xx responses, and successful
+responses without an exposed ETag. Progress advances after each confirmed part;
+if requesting or uploading a part fails, the client makes a best-effort request
+to abort the backend and storage session before preserving the original failure.
+Intra-part byte progress, part retry, user-initiated cancellation, and resume are
+not implemented yet. Completion failures are not auto-aborted because a lost
+completion response can occur after storage has already assembled the object.
+
+Single-upload selections keep each phase visible for at least 350 ms to avoid UI
+flicker; multi-file batches and multipart uploads omit that artificial delay.
+Multipart slicing does not copy the whole file into JavaScript memory.
 
 ### File detail
 
@@ -190,7 +223,9 @@ apps/web/
 │   │   ├── vault_page.tsx          root/folder page wrappers and route states
 │   │   └── file_page.tsx           metadata page and route states
 │   ├── lib/
-│   │   ├── api.ts                  Eden Treaty singleton and API base URL
+│   │   ├── api.ts                  Eden singleton and reusable request types
+│   │   ├── upload/multi.ts         multipart API and storage request helpers
+│   │   ├── upload/single.ts        typed single-upload request helpers
 │   │   ├── vault.ts                vault loaders and backend-to-view mapping
 │   │   └── files.ts                file loader and typed errors
 │   ├── utils/
@@ -199,6 +234,7 @@ apps/web/
 │   └── components/
 │       ├── RootLayout.tsx           shared header and outlet
 │       ├── Button.tsx               primary/secondary/destructive button styles
+│       ├── UploadFileButton.tsx     opens the root upload file picker
 │       ├── VaultIcons.tsx           inline React SVG icon components
 │       ├── FolderView/
 │       │   ├── FolderView.tsx       active vault orchestration and local UI state
@@ -210,8 +246,10 @@ apps/web/
 │       │       ├── useFolderMutations.ts typed mutation state machine
 │       │       └── folder.types.ts  folder mutation/view types
 │       ├── FileUpload/
-│       │   ├── FileUpload.tsx       picker, progress, success/error presentation
-│       │   └── useFileUpload.ts     checksum + initialize/PUT/complete workflow
+│       │   ├── FileUpload.tsx       multi-file input and upload-view composition
+│       │   ├── FileUploadProgress.tsx aggregate progress presentation
+│       │   ├── SelectedFilesCard.tsx selected-file list and batch actions
+│       │   └── useFileUpload.ts     sequential single-upload batch queue
 │       ├── NewFolder/
 │       │   └── NewFolder.tsx        controlled create-folder form
 │       └── FileList/
@@ -289,7 +327,10 @@ the API behavior rather than browser components.
 1. Support `parentFolderId` in backend upload initialization, then enable nested
    folder uploads in `FolderView`.
 2. Add a backend download URL endpoint and a file download/preview action.
-3. Implement multipart upload above 200 MiB without buffering the full file.
+3. Extend the sequential multipart implementation with retry, cancellation,
+   and resumability. Follow the staged design in
+   [`../../docs/resumable-uploads.md`](../../docs/resumable-uploads.md); it is a
+   proposal, not current behavior.
 4. Add file rename, move, and delete APIs and UI.
 5. Expose folder move UI; backend cycle-safe movement already exists.
 6. Add server-side search/pagination for large vaults; current search is direct

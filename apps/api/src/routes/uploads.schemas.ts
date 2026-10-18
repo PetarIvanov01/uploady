@@ -6,7 +6,7 @@ import {
 } from "../services/uploads/upload.constants";
 
 export const singleUploadBodySchema = t.Object({
-  checksum: t.String({ maxLength: 128, minLength: 1 }),
+  checksum: t.Optional(t.String({ maxLength: 128, minLength: 1 })),
   name: t.String({ maxLength: 255, minLength: 1 }),
   size: t.Integer({ minimum: 1 }),
   type: t.String({ maxLength: 255, minLength: 1 }),
@@ -23,7 +23,7 @@ export const multipartUploadBodySchema = t.Object({
     minimum: SINGLE_UPLOAD_LIMIT_BYTES + 1,
   }),
   type: t.String({ maxLength: 255, minLength: 1 }),
-  checksum: t.String({ maxLength: 128, minLength: 1 }),
+  checksum: t.Optional(t.String({ maxLength: 128, minLength: 1 })),
 });
 
 export const multipartPartParamsSchema = t.Object({

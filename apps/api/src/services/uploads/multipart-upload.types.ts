@@ -2,7 +2,7 @@ export interface MultipartUploadInput {
   name: string;
   size: number;
   type: string;
-  checksum: string;
+  checksum?: string;
 }
 
 export interface MultipartPartParams {

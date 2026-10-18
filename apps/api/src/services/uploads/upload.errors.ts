@@ -27,8 +27,11 @@ const uploadErrorMessages = {
 } satisfies Record<UploadErrorCode, string>;
 
 export class UploadError extends Error {
-  constructor(readonly code: UploadErrorCode) {
+  readonly code: UploadErrorCode;
+
+  constructor(code: UploadErrorCode) {
     super(uploadErrorMessages[code]);
     this.name = "UploadError";
+    this.code = code;
   }
 }

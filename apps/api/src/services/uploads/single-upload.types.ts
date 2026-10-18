@@ -1,5 +1,5 @@
 export interface SingleUploadInput {
-  checksum: string;
+  checksum?: string;
   name: string;
   size: number;
   type: string;
@@ -22,7 +22,7 @@ export interface CompleteSingleUploadInput {
 export type CompleteSingleUploadResult =
   | {
       fileId: string;
-      status: "COMPLETED";
+      status: "COMPLETE";
       uploadSessionId: string;
     }
   | { status: "EXPIRED" | "NOT_FOUND" | "NOT_UPLOADED" | "SIZE_MISMATCH" };

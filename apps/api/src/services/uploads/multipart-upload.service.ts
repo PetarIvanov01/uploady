@@ -15,6 +15,7 @@ import type {
 import {
   MULTIPART_DEFAULT_PART_BYTES,
   MULTIPART_MAX_PARTS,
+  MULTIPART_UPLOAD_SESSION_EXPIRES_IN_SECONDS,
   SINGLE_UPLOAD_LIMIT_BYTES,
 } from "./upload.constants";
 import { resolveUploadCompletionClaim } from "./upload-completion";
@@ -38,7 +39,7 @@ export async function initiateMultipartUpload(
   }
 
   const expiresAt = new Date(
-    Date.now() + PRESIGNED_UPLOAD_EXPIRES_IN_SECONDS * 1000,
+    Date.now() + MULTIPART_UPLOAD_SESSION_EXPIRES_IN_SECONDS * 1000,
   );
 
   const partSizeBytes = calculatePartSize(input.size);
@@ -287,10 +288,6 @@ export async function abortMultipartUpload(
 
   if (session.status !== "UPLOADING") {
     throw new UploadError("INVALID_SESSION_STATUS");
-  }
-
-  if (session.expiresAt <= new Date()) {
-    throw new UploadError("SESSION_EXPIRED");
   }
 
   if (!session.storageUploadId) {

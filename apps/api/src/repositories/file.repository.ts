@@ -12,7 +12,7 @@ type FindUploadSessionInput = {
 };
 
 export interface CreateUploadSessionInput {
-  checksum: string;
+  checksum?: string;
   expectedParts: number;
   expiresAt: Date;
   name: string;

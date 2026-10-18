@@ -90,9 +90,9 @@ yet accept `parentFolderId`.
 Multipart uploads above 200 MiB are implemented through direct-to-storage part
 uploads:
 
-1. Initialization transactionally creates the file, first version, and
-   multipart session, then creates storage multipart state and persists its
-   upload ID.
+1. Initialization transactionally creates the file, first version, and a
+   24-hour multipart session, then creates storage multipart state and persists
+   its upload ID.
 2. Part size defaults to 100 MiB and increases for large files so every accepted
    upload stays within the 10,000-part storage limit.
 3. Each part endpoint checks ownership, session state, expiry, the storage
@@ -106,7 +106,8 @@ uploads:
    storage completion twice, and can finalize a `COMPLETING` session after
    verifying an already assembled object.
 6. Abort removes storage multipart state and marks the session aborted and its
-   file/version failed.
+   file/version failed. An active session can still be aborted after expiry so
+   its incomplete storage upload can be cleaned up.
 
 The enforced limits are:
 
@@ -116,6 +117,8 @@ The enforced limits are:
 - maximum part: 5 GiB;
 - maximum part count: 10,000;
 - maximum file: approximately 4.995 TiB.
+- multipart session lifetime: 24 hours;
+- presigned part URL lifetime: five minutes.
 
 ### Vault read model
 

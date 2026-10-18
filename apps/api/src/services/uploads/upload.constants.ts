@@ -1,4 +1,5 @@
 export const SINGLE_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
+export const MULTIPART_UPLOAD_SESSION_EXPIRES_IN_SECONDS = 24 * 60 * 60;
 
 /** @knipignore Reserved for multipart implementation. */
 export const MULTIPART_MIN_PART_BYTES = 5 * 1024 * 1024;
